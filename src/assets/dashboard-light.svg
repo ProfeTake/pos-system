@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1138" viewBox="0 0 1024 1138" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f5f7ff"/>
+      <stop offset="100%" stop-color="#e9ecff"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1138" fill="url(#grad)"/>
+  <!-- Simulación de paneles -->
+  <rect x="80" y="120" width="360" height="140" rx="16" fill="#ffffff" stroke="#E5E7EB"/>
+  <rect x="460" y="120" width="480" height="140" rx="16" fill="#ffffff" stroke="#E5E7EB"/>
+  <rect x="80" y="280" width="860" height="300" rx="16" fill="#ffffff" stroke="#E5E7EB"/>
+  <rect x="80" y="600" width="420" height="420" rx="16" fill="#ffffff" stroke="#E5E7EB"/>
+  <rect x="520" y="600" width="420" height="420" rx="16" fill="#ffffff" stroke="#E5E7EB"/>
+  <!-- Grilla/placeholder -->
+  <g opacity="0.35">
+    <rect x="110" y="320" width="140" height="16" rx="4" fill="#CBD5E1"/>
+    <rect x="110" y="352" width="780" height="10" rx="3" fill="#E2E8F0"/>
+    <rect x="110" y="372" width="700" height="10" rx="3" fill="#E2E8F0"/>
+    <rect x="110" y="392" width="760" height="10" rx="3" fill="#E2E8F0"/>
+  </g>
+</svg>

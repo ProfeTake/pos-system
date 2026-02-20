@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>Sistema de Ventas</title>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <!-- QZ Tray (opcional para auto-impresión POS). Requiere tener QZ instalado y permisos -->
+    <script src="https://cdn.jsdelivr.net/npm/qz-tray/qz-tray.js"></script>
+    <!-- Inyección segura del cliente de Vite sólo en desarrollo (p/ HMR en navegador y Electron) -->
+    <script type="module">
+      if (location.hostname === "localhost") {
+        try {
+          await import("/@vite/client");
+        } catch {}
+      }
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

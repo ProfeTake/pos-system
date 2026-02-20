@@ -1,0 +1,50 @@
+# Node modules
+node_modules/
+*/node_modules/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Environment files
+.env
+.env.*
+.env.local
+.env.production
+.env.production.local
+server/.env
+server/.env.*
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+sqlite.db
+sqlite.db-*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing
+coverage/
+
+# Temporary files
+*.tmp
+.cache/

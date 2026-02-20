@@ -1,0 +1,308 @@
+/* Dark theme selector handled by next-themes via .dark class */
+
+:root {
+  --font-size: 16px;
+  --background: #ffffff;
+  --foreground: oklch(0.145 0 0);
+  --card: #ffffff;
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: #030213;
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.95 0.0058 264.53);
+  --secondary-foreground: #030213;
+  --muted: #ececf0;
+  --muted-foreground: #717182;
+  --accent: #e9ebef;
+  --accent-foreground: #030213;
+  --destructive: #d4183d;
+  --destructive-foreground: #ffffff;
+  --border: rgba(0, 0, 0, 0.1);
+  --input: transparent;
+  --input-background: #f3f3f5;
+  --switch-background: #cbced4;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --ring: oklch(0.708 0 0);
+  /* Colores vibrantes para tema claro */
+  --chart-1: #e63946; /* Rojo vibrante */
+  --chart-2: #2a9d8f; /* Verde azulado */
+  --chart-3: #e9c46a; /* Amarillo dorado */
+  --chart-4: #264653; /* Azul oscuro */
+  --chart-5: #f4a261; /* Naranja cálido */
+  --chart-6: #9b59b6; /* Púrpura */
+  --chart-7: #3498db; /* Azul brillante */
+  --chart-8: #1abc9c; /* Turquesa */
+  --radius: 0.75rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: #030213;
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: #0a0a0f; /* Fondo más oscuro con tinte azul */
+  --foreground: oklch(0.985 0 0);
+  --card: #12121a; /* Tarjetas oscuras con tinte azul */
+  --card-foreground: oklch(0.985 0 0);
+  --popover: #12121a;
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: #00f0ff; /* Cyan neón NeoTokyo */
+  --primary-foreground: #0a0a0f;
+  --secondary: #1a1a2e;
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: #1a1a2e;
+  --muted-foreground: #8888aa;
+  --accent: #1e1e3f;
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: #ff2d55; /* Rosa/rojo neón */
+  --destructive-foreground: #ffffff;
+  --border: rgba(0, 240, 255, 0.15); /* Borde con tinte cyan */
+  --input: #1a1a2e;
+  --ring: #00f0ff;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  /* Paleta NeoTokyo cyberpunk */
+  --chart-1: #00f0ff; /* Cyan neón */
+  --chart-2: #ff00ff; /* Magenta neón */
+  --chart-3: #ffff00; /* Amarillo neón */
+  --chart-4: #00ff88; /* Verde neón */
+  --chart-5: #ff6b35; /* Naranja neón */
+  --chart-6: #a855f7; /* Púrpura eléctrico */
+  --chart-7: #38bdf8; /* Azul cielo */
+  --chart-8: #f472b6; /* Rosa hot */
+  --sidebar: #0f0f18;
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: #00f0ff;
+  --sidebar-primary-foreground: #0a0a0f;
+  --sidebar-accent: #1a1a2e;
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: rgba(0, 240, 255, 0.1);
+  --sidebar-ring: #00f0ff;
+}
+
+/* Flattened theme variables (Tailwind @theme replaced to avoid editor warnings) */
+:root {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-switch-background: var(--switch-background);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-8: var(--chart-8);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/* Base styles without Tailwind @apply to avoid editor warnings */
+* {
+  border-color: var(--border);
+  outline-color: var(--ring);
+}
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+/* Ocultar controles (spinners) de inputs type=number */
+.no-spin::-webkit-outer-spin-button,
+.no-spin::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.no-spin[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/*
+  Animación suave entre temas
+  - Usa View Transitions (Chrome/Edge 111+) para un crossfade fluido
+  - Fallback: cambio instantáneo para evitar lag
+*/
+html {
+  view-transition-name: theme;
+}
+
+/* Transición rápida y fluida del documento */
+::view-transition-old(theme),
+::view-transition-new(theme) {
+  animation-duration: 150ms;
+  animation-timing-function: ease-out;
+}
+
+/* Solo transicionamos colores en elementos raíz, no en todos los hijos */
+html,
+body {
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+/* Respeta usuarios con reducción de movimiento */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    view-transition-name: none;
+  }
+  html,
+  body {
+    transition: none;
+  }
+}
+
+/**
+ * Base typography. This is not applied to elements which have an ancestor with a Tailwind text class.
+ */
+@layer base {
+  :where(:not(:has([class*=" text-"]), :not(:has([class^="text-"])))) {
+    h1 {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    h2 {
+      font-size: var(--text-xl);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    h3 {
+      font-size: var(--text-lg);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    h4 {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    p {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-normal);
+      line-height: 1.5;
+    }
+
+    label {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    button {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    input {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-normal);
+      line-height: 1.5;
+    }
+  }
+}
+
+html {
+  font-size: var(--font-size);
+}
+
+/* NeoTokyo Dark Theme - Glow effects */
+.dark {
+  /* Sutil glow en las tarjetas */
+  --card-glow: 0 0 20px rgba(0, 240, 255, 0.05);
+}
+
+.dark .recharts-cartesian-grid-horizontal line,
+.dark .recharts-cartesian-grid-vertical line {
+  stroke: rgba(0, 240, 255, 0.1);
+}
+
+/* Efecto glow sutil en barras y áreas de gráficos en tema oscuro */
+.dark .recharts-bar-rectangle,
+.dark .recharts-area {
+  filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.3));
+}
+
+.dark .recharts-pie-sector {
+  filter: drop-shadow(0 0 6px rgba(255, 0, 255, 0.4));
+}
+
+/* Custom scrollbar styles */
+.custom-scrollbar,
+[data-custom-scrollbar] {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(155, 155, 155, 0.4) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar,
+[data-custom-scrollbar]::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track,
+[data-custom-scrollbar]::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb,
+[data-custom-scrollbar]::-webkit-scrollbar-thumb {
+  background: rgba(155, 155, 155, 0.4);
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover,
+[data-custom-scrollbar]::-webkit-scrollbar-thumb:hover {
+  background: rgba(155, 155, 155, 0.6);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb,
+.dark [data-custom-scrollbar]::-webkit-scrollbar-thumb {
+  background: rgba(0, 240, 255, 0.3);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover,
+.dark [data-custom-scrollbar]::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 240, 255, 0.5);
+}
+
+/* Auth component helpers live in styles/auth.css to avoid @apply warnings */
