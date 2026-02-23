@@ -97,7 +97,8 @@ if (process.env.NODE_ENV === "production") {
   const frontendPath = path.resolve(__dirname, "../../frontend");
   app.use(express.static(frontendPath));
   // SPA fallback: cualquier ruta no-API devuelve index.html
-  app.get("*", (req, res) => {
+  // Express 5 requiere parámetro con nombre en vez de "*"
+  app.get("/{*splat}", (req, res) => {
     if (!req.path.startsWith("/api")) {
       res.sendFile(path.join(frontendPath, "index.html"));
     } else {
