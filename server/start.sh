@@ -4,14 +4,14 @@ set -e
 echo "🔧 Running database migrations..."
 cd /app/server
 
-# Fresh DB each deploy (SQLite in container is ephemeral anyway)
-# Remove stale DB to avoid partial migration conflicts
-if [ -f db.sqlite ]; then
-  echo "🗑️  Removing stale database for clean migration..."
-  rm -f db.sqlite db.sqlite-wal db.sqlite-shm
+# If DATABASE_URL is set (Railway Volume), ensure the directory exists
+if [ -n "$DATABASE_URL" ]; then
+  DB_DIR=$(dirname "$DATABASE_URL")
+  mkdir -p "$DB_DIR"
+  echo "📂 Using persistent volume: $DATABASE_URL"
 fi
 
-# Run migrations
+# Run migrations (idempotent - safe to run on existing DB)
 node dist/db/migrate.js
 
 echo "🌱 Seeding admin user..."
