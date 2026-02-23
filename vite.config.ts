@@ -79,5 +79,5 @@ export default defineConfig({
     // No abrir el navegador automáticamente en dev; Electron cargará esta URL
     open: false,
   },
-  base: "./",
+  base: "/",
 });

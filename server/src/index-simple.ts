@@ -124,8 +124,8 @@ if (process.env.NODE_ENV !== "production") {
   });
 }
 
-app.listen(PORT, () => {
+app.listen(Number(PORT), '0.0.0.0', () => {
   console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || "development"}`);
-  console.log(`🌍 API URL: http://localhost:${PORT}`);
+  console.log(`🌍 API URL: http://0.0.0.0:${PORT}`);
 });
