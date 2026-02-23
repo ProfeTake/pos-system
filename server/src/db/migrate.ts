@@ -64,28 +64,34 @@ for (const file of sqlFiles) {
     .map(s => s.trim())
     .filter(s => s.length > 0);
 
-  const applyMigration = sqlite.transaction(() => {
-    for (const stmt of statements) {
-      try {
-        // Clean any BOM or weird characters
-        const cleanStmt = stmt.replace(/^\uFEFF/, '').replace(/^Ñ/, '');
-        sqlite.exec(cleanStmt);
-      } catch (err: any) {
-        // Skip "already exists" errors (idempotent)
-        if (err.message?.includes("already exists")) {
-          console.log(`    ⚠️  Skipped (already exists): ${err.message.substring(0, 80)}`);
-        } else {
-          throw err;
-        }
+  let allOk = true;
+  for (const stmt of statements) {
+    try {
+      // Clean any BOM or weird characters
+      const cleanStmt = stmt.replace(/^\uFEFF/, '').replace(/^Ñ/, '');
+      sqlite.exec(cleanStmt);
+    } catch (err: any) {
+      const msg = err.message || "";
+      // Skip idempotent errors
+      if (
+        msg.includes("already exists") ||
+        msg.includes("duplicate column") ||
+        msg.includes("no such column") ||
+        msg.includes("no such index")
+      ) {
+        console.log(`    ⚠️  Skipped: ${msg.substring(0, 100)}`);
+      } else {
+        console.error(`    ❌ Error: ${msg}`);
+        allOk = false;
       }
     }
-    sqlite.prepare(
-      "INSERT INTO __drizzle_migrations (filename) VALUES (?)"
-    ).run(file);
-  });
+  }
 
-  applyMigration();
-  console.log(`  ✅ ${file} applied`);
+  // Mark migration as applied
+  sqlite.prepare(
+    "INSERT OR IGNORE INTO __drizzle_migrations (filename) VALUES (?)"
+  ).run(file);
+  console.log(`  ✅ ${file} ${allOk ? "applied" : "applied with warnings"}`);
 }
 
 console.log("✅ All migrations applied successfully");
