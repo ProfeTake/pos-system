@@ -49,6 +49,10 @@ COPY --from=backend-builder /app/server/drizzle.config.ts ./drizzle.config.ts
 # Copy frontend build output (served by Express in production)
 COPY --from=frontend-builder /app/dist ../frontend
 
+# Copy startup script
+COPY server/start.sh ./start.sh
+RUN chmod +x ./start.sh
+
 EXPOSE 3002
 
-CMD ["node", "dist/index-simple.js"]
+CMD ["./start.sh"]
