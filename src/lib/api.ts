@@ -5,10 +5,11 @@
 // - Manejo básico de errores y parse JSON seguro
 
 export const API_BASE: string =
-  (import.meta as any)?.env?.VITE_API_BASE || "http://localhost:3002";
+  (import.meta as any)?.env?.VITE_API_BASE || 
+  (import.meta.env.PROD ? "" : "http://localhost:3002");
 
-// Configuración de seguridad para la API
-const API_PATH = import.meta.env.PROD ? '/system-v2-internal' : '';
+// En producción se sirve desde el mismo dominio, no se necesita path ofuscado
+const API_PATH = '';
 const API_KEY = import.meta.env.VITE_API_KEY || 'dev-key';
 
 function getStoredToken(): string | null {

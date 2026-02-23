@@ -5,14 +5,27 @@ import path from "path";
 
 import { tenantMiddleware } from "./middlewares/tenant.middleware";
 
-dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+// En producción (Docker), las env vars vienen del entorno (Railway).
+// En desarrollo, cargar desde .env local.
+if (process.env.NODE_ENV !== "production") {
+  dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+}
 
 const app = express();
 const PORT = process.env.PORT || 3002;
 
-// CORS básico
+// CORS - permitir orígenes locales y producción
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+];
+if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+  allowedOrigins.push(`https://${process.env.RAILWAY_PUBLIC_DOMAIN}`);
+}
+
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'],
+  origin: allowedOrigins,
   credentials: true
 }));
 
@@ -79,10 +92,24 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   res.status(500).json({ error: 'Error interno del servidor' });
 });
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: 'Endpoint no encontrado' });
-});
+// En producción, servir el frontend React (build estático)
+if (process.env.NODE_ENV === "production") {
+  const frontendPath = path.resolve(__dirname, "../../frontend");
+  app.use(express.static(frontendPath));
+  // SPA fallback: cualquier ruta no-API devuelve index.html
+  app.get("*", (req, res) => {
+    if (!req.path.startsWith("/api")) {
+      res.sendFile(path.join(frontendPath, "index.html"));
+    } else {
+      res.status(404).json({ error: 'Endpoint no encontrado' });
+    }
+  });
+} else {
+  // 404 handler (solo desarrollo)
+  app.use((req: express.Request, res: express.Response) => {
+    res.status(404).json({ error: 'Endpoint no encontrado' });
+  });
+}
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
