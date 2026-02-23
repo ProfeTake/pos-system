@@ -86,27 +86,39 @@ app.use("/api/returns", returnsRoutes);
 app.use("/api/fiscal", fiscalRoutes);
 app.use("/api/supplier-invoices", supplierInvoicesRoutes);
 
-// Error handler
+// En producción, servir el frontend React (build estático)
+if (process.env.NODE_ENV === "production") {
+  const fs = require("fs");
+  const frontendPath = path.resolve(__dirname, "../../frontend");
+  const indexPath = path.join(frontendPath, "index.html");
+  
+  console.log(`📂 Frontend path: ${frontendPath}`);
+  console.log(`📄 Index exists: ${fs.existsSync(indexPath)}`);
+
+  if (fs.existsSync(frontendPath)) {
+    app.use(express.static(frontendPath));
+  }
+
+  // SPA fallback: cualquier ruta no-API devuelve index.html
+  app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (req.path.startsWith("/api")) {
+      res.status(404).json({ error: "Endpoint no encontrado" });
+    } else if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      res.status(500).json({ error: "Frontend no disponible", path: frontendPath });
+    }
+  });
+}
+
+// Error handler (debe ir al final)
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Error:', err);
   res.status(500).json({ error: 'Error interno del servidor' });
 });
 
-// En producción, servir el frontend React (build estático)
-if (process.env.NODE_ENV === "production") {
-  const frontendPath = path.resolve(__dirname, "../../frontend");
-  app.use(express.static(frontendPath));
-  // SPA fallback: cualquier ruta no-API devuelve index.html
-  // Express 5 requiere parámetro con nombre en vez de "*"
-  app.get("/{*splat}", (req, res) => {
-    if (!req.path.startsWith("/api")) {
-      res.sendFile(path.join(frontendPath, "index.html"));
-    } else {
-      res.status(404).json({ error: 'Endpoint no encontrado' });
-    }
-  });
-} else {
-  // 404 handler (solo desarrollo)
+// 404 handler
+if (process.env.NODE_ENV !== "production") {
   app.use((req: express.Request, res: express.Response) => {
     res.status(404).json({ error: 'Endpoint no encontrado' });
   });
