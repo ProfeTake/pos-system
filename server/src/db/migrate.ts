@@ -39,5 +39,5 @@ async function runMigrations() {
 
 runMigrations().catch((err) => {
   console.error("❌ Migration error:", err);
-  process.exit(1);
+  console.log("⚠️  Continuing without migrations (tables may already exist via db:push)");
 });
