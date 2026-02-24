@@ -76,6 +76,7 @@ export function Sidebar({
 }: SidebarProps) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { isMobile, setOpenMobile } = useSidebar();
 
   const menuItemsBase = [
     {
@@ -201,15 +202,18 @@ export function Sidebar({
                     onClick={() => {
                       if (item.onClick) {
                         item.onClick();
+                        if (isMobile) setOpenMobile(false);
                         return;
                       }
                       // SuperAdmin navega a app separada
                       if (item.id === "superadmin") {
+                        if (isMobile) setOpenMobile(false);
                         navigate("/superadmin");
                         return;
                       }
                       if (!item.disabled) {
                         onNavigate(item.id as ViewType);
+                        if (isMobile) setOpenMobile(false);
                       }
                     }}
                     isActive={
