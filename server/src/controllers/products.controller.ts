@@ -70,7 +70,7 @@ export const getAll = async (req: TenantRequest, res: Response) => {
 
   try {
     // Intentar obtener de cache
-    const cached = cacheService.get<any[]>(cacheKeyStr);
+    const cached = await cacheService.get<any[]>(cacheKeyStr);
     if (cached) {
       res.setHeader("X-Cache", "HIT");
       return res.json(cached);
@@ -79,7 +79,7 @@ export const getAll = async (req: TenantRequest, res: Response) => {
     const allProducts = db.select().from(products).all();
     
     // Guardar en cache por 5 minutos
-    cacheService.set(cacheKeyStr, allProducts, CACHE_TTL.MEDIUM);
+    await cacheService.set(cacheKeyStr, allProducts, CACHE_TTL.MEDIUM);
     
     res.setHeader("X-Cache", "MISS");
     res.json(allProducts);
@@ -128,7 +128,7 @@ export const create = async (req: TenantRequest, res: Response) => {
       .get();
     
     // Invalidar cache de productos
-    cacheService.delPattern(`products:${tenantId || "default"}:*`);
+    await cacheService.delPattern(`products:${tenantId || "default"}:*`);
     
     res.status(201).json(newProduct);
   } catch (error: any) {
@@ -161,7 +161,7 @@ export const update = async (req: TenantRequest, res: Response) => {
       return res.status(404).json({ message: "Producto no encontrado" });
     
     // Invalidar cache
-    cacheService.delPattern(`products:${tenantId || "default"}:*`);
+    await cacheService.delPattern(`products:${tenantId || "default"}:*`);
     
     res.json(updated);
   } catch (error: any) {
@@ -178,7 +178,7 @@ export const remove = async (req: TenantRequest, res: Response) => {
     db.delete(products).where(eq(products.id, Number(id))).run();
     
     // Invalidar cache
-    cacheService.delPattern(`products:${tenantId || "default"}:*`);
+    await cacheService.delPattern(`products:${tenantId || "default"}:*`);
     
     res.json({ message: "Product deleted" });
   } catch (error) {
