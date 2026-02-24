@@ -1457,7 +1457,7 @@ export function Inventory({
         open={!!confirmDeleteProduct}
         onOpenChange={() => setConfirmDeleteProduct(null)}
       >
-        <DialogContent>
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Eliminar producto</DialogTitle>
             <DialogDescription>
@@ -1467,7 +1467,7 @@ export function Inventory({
           <p className="text-sm">
             ¿Confirma eliminar <b>{confirmDeleteProduct?.name}</b>?
           </p>
-          <DialogFooter>
+          <DialogFooter className="flex-row justify-end gap-2">
             <Button
               variant="outline"
               onClick={() => setConfirmDeleteProduct(null)}
