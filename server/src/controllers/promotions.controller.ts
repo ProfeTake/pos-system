@@ -74,7 +74,7 @@ export const getAll = async (req: Request, res: Response) => {
  */
 export const getActive = async (req: Request, res: Response) => {
   try {
-    const now = Math.floor(Date.now() / 1000);
+    const now = new Date();
 
     const activePromos = await db
       .select()
@@ -84,9 +84,9 @@ export const getActive = async (req: Request, res: Response) => {
           eq(promotions.active, true),
           or(
             isNull(promotions.startDate),
-            lte(promotions.startDate, sql`${now}`)
+            lte(promotions.startDate, now)
           ),
-          or(isNull(promotions.endDate), gte(promotions.endDate, sql`${now}`)),
+          or(isNull(promotions.endDate), gte(promotions.endDate, now)),
           or(
             isNull(promotions.maxUses),
             sql`${promotions.usedCount} < ${promotions.maxUses}`

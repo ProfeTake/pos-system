@@ -235,7 +235,9 @@ export const getSalesTrend = async (req: Request, res: Response) => {
     for (let i = 0; i < days; i++) {
       const date = new Date(startDate);
       date.setDate(date.getDate() + i);
-      const dateStr = date.toISOString().split("T")[0];
+      // Usar fecha local Chile (no UTC) para que las etiquetas coincidan
+      // con el agrupamiento de MySQL DATE(created_at)
+      const dateStr = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 
       const existing = trendMap.get(dateStr);
       const salesCount = existing?.count || 0;

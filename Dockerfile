@@ -29,6 +29,9 @@ RUN npm run build
 # Stage 3: Production
 FROM node:18-alpine
 
+# Instalar tzdata para que TZ=America/Santiago funcione en Alpine
+RUN apk add --no-cache tzdata
+
 WORKDIR /app/server
 
 # Copy backend built files and dependencies
@@ -46,6 +49,9 @@ COPY --from=frontend-builder /app/dist ../frontend
 # Copy startup script
 COPY server/start.sh ./start.sh
 RUN chmod +x ./start.sh
+
+# Timezone Chile para que Date() use hora local correcta
+ENV TZ=America/Santiago
 
 EXPOSE 3002
 

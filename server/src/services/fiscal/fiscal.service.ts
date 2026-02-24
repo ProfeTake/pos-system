@@ -32,7 +32,11 @@ export async function issueBoletaForSale(params: {
     .from(saleItems)
     .where(eq(saleItems.saleId, params.saleId));
 
-  const createdAtUnix = Number((sale as any).createdAt ?? 0);
+  // createdAt es Date (MySQL TIMESTAMP) — convertir a epoch Unix (segundos)
+  const createdAtDate = (sale as any).createdAt;
+  const createdAtUnix = createdAtDate instanceof Date
+    ? Math.floor(createdAtDate.getTime() / 1000)
+    : Number(createdAtDate ?? 0);
 
   // Crear registro pending
   const [insertResult] = await db

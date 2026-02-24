@@ -78,11 +78,21 @@ export const recalculateWindow = async (req: Request, res: Response) => {
             
             if (todayConfig?.closeTime) {
                 const [closeH, closeM] = todayConfig.closeTime.split(":").map(Number);
-                newWindowClose = new Date(now);
+                
+                // Crear fecha base (hoy a medianoche)
+                const baseDay = new Date(now);
+                baseDay.setHours(0, 0, 0, 0);
+                
+                // Usar closeNextDay del config para determinar si el cierre es hoy o mañana
+                const closeNextDay = todayConfig.closeNextDay ?? false;
+                newWindowClose = new Date(baseDay);
+                if (closeNextDay) {
+                    newWindowClose.setDate(newWindowClose.getDate() + 1);
+                }
                 newWindowClose.setHours(closeH, closeM, 0, 0);
                 
-                // Si la hora de cierre ya pasó y es para el turno "current", 
-                // el cierre es al día siguiente
+                // Seguridad: si el cierre calculado ya pasó y es turno "current",
+                // mover al día siguiente (raro pero posible si se cambió horario tarde)
                 if (newWindowClose <= now && mode === "current") {
                     newWindowClose.setDate(newWindowClose.getDate() + 1);
                 }

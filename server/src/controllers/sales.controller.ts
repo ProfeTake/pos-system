@@ -399,7 +399,8 @@ export const getSalesTrend = async (req: Request, res: Response) => {
 
     for (let i = days - 1; i >= 0; i--) {
       const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-      const dateStr = date.toISOString().split('T')[0];
+      // Usar fecha local Chile (no UTC) para que coincida con DATE(created_at)
+      const dateStr = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
       const dayData = salesMap.get(dateStr);
       
       trend.push({

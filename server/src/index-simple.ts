@@ -1,3 +1,8 @@
+// Forzar timezone de Chile para que todas las operaciones de Date
+// usen hora local chilena (crucial para horarios de negocio).
+// Debe ir ANTES de cualquier otro import que use Date.
+process.env.TZ = 'America/Santiago';
+
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";

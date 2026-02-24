@@ -1,6 +1,9 @@
 #!/bin/sh
 set -e
 
+# Timezone Chile
+export TZ=America/Santiago
+
 echo "🔧 Running database migrations..."
 cd /app/server
 

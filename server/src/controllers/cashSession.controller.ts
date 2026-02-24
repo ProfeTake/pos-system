@@ -205,11 +205,11 @@ export const getBalance = async (req: Request, res: Response) => {
       return res.json({ open: false, balance: 0 });
     }
 
-    const sessionStartTs =
+    const sessionStart =
       s.openTime instanceof Date
-        ? Math.floor(s.openTime.getTime() / 1000)
-        : s.openTime;
-    const nowTs = Math.floor(Date.now() / 1000);
+        ? s.openTime
+        : new Date(s.openTime);
+    const now = new Date();
 
     // Ventas en efectivo dentro de la ventana de la sesión
     const [efectivoRow] = await db
@@ -218,8 +218,8 @@ export const getBalance = async (req: Request, res: Response) => {
       .where(
         and(
           eq(sales.paymentMethod, "efectivo"),
-          sql`${sales.createdAt} >= ${sessionStartTs}`,
-          sql`${sales.createdAt} <= ${nowTs}`
+          gte(sales.createdAt, sessionStart),
+          lte(sales.createdAt, now)
         )
       );
 

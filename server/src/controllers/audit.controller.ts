@@ -36,16 +36,10 @@ export const getAuditLog = async (req: Request, res: Response) => {
       conditions.push(eq(auditLog.userId, parseInt(userId as string)));
     }
     if (dateFrom) {
-      const fromTimestamp = Math.floor(
-        new Date(dateFrom as string).getTime() / 1000
-      );
-      conditions.push(gte(auditLog.createdAt, sql`${fromTimestamp}`));
+      conditions.push(gte(auditLog.createdAt, new Date(dateFrom as string)));
     }
     if (dateTo) {
-      const toTimestamp = Math.floor(
-        new Date(dateTo as string).getTime() / 1000
-      );
-      conditions.push(lte(auditLog.createdAt, sql`${toTimestamp}`));
+      conditions.push(lte(auditLog.createdAt, new Date(dateTo as string)));
     }
 
     // Query con filtros
@@ -125,9 +119,7 @@ export const getAuditStats = async (req: Request, res: Response) => {
   try {
     const { days = "7" } = req.query;
     const daysNum = parseInt(days as string);
-    const startTimestamp = Math.floor(
-      (Date.now() - daysNum * 24 * 60 * 60 * 1000) / 1000
-    );
+    const startDate = new Date(Date.now() - daysNum * 24 * 60 * 60 * 1000);
 
     // Acciones por tipo
     const byAction = await db
@@ -136,7 +128,7 @@ export const getAuditStats = async (req: Request, res: Response) => {
         count: sql<number>`count(*)`,
       })
       .from(auditLog)
-      .where(gte(auditLog.createdAt, sql`${startTimestamp}`))
+      .where(gte(auditLog.createdAt, startDate))
       .groupBy(auditLog.action)
       .orderBy(desc(sql`count(*)`))
       .limit(10);
@@ -149,7 +141,7 @@ export const getAuditStats = async (req: Request, res: Response) => {
       })
       .from(auditLog)
       .leftJoin(users, eq(auditLog.userId, users.id))
-      .where(gte(auditLog.createdAt, sql`${startTimestamp}`))
+      .where(gte(auditLog.createdAt, startDate))
       .groupBy(users.username)
       .orderBy(desc(sql`count(*)`))
       .limit(10);
@@ -158,7 +150,7 @@ export const getAuditStats = async (req: Request, res: Response) => {
     const [totalResult] = await db
       .select({ count: sql<number>`count(*)` })
       .from(auditLog)
-      .where(gte(auditLog.createdAt, sql`${startTimestamp}`))
+      .where(gte(auditLog.createdAt, startDate))
       .limit(1);
 
     res.json({
