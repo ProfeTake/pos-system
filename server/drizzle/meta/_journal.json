@@ -29,6 +29,13 @@
       "when": 1734451200000,
       "tag": "0003_add_window_open",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1740307200000,
+      "tag": "0004_add_missing_tables",
+      "breakpoints": true
     }
   ]
 }
