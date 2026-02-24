@@ -62,75 +62,9 @@ function escapeHtml(s: string) {
 
 export function printSaleReceipt(data: ReceiptData, receiptType?: string) {
   const html = getReceiptHtml(data, receiptType);
-  
-  // Crear un contenedor aislado para el iframe de impresión
-  // Esto evita interferencias con los portales de Radix UI (Select, Dialog, etc.)
-  const printContainer = document.createElement("div");
-  printContainer.id = "print-iframe-container";
-  printContainer.setAttribute("data-print-container", "true");
-  printContainer.style.cssText = `
-    position: fixed !important;
-    z-index: -9999 !important;
-    visibility: hidden !important;
-    width: 0 !important;
-    height: 0 !important;
-    overflow: hidden !important;
-    pointer-events: none !important;
-    opacity: 0 !important;
-  `;
-  
-  const iframe = document.createElement("iframe");
-  iframe.style.cssText = `
-    position: absolute !important;
-    width: 0 !important;
-    height: 0 !important;
-    border: 0 !important;
-    visibility: hidden !important;
-  `;
-  iframe.setAttribute("aria-hidden", "true");
-  iframe.setAttribute("tabindex", "-1");
-  
-  printContainer.appendChild(iframe);
-  document.body.appendChild(printContainer);
-  
-  const doc = iframe.contentDocument || iframe.contentWindow?.document;
-  if (!doc) {
-    console.error('No se pudo acceder al documento del iframe');
-    document.body.removeChild(printContainer);
-    return;
-  }
-  
-  doc.open();
-  doc.write(html);
-  doc.close();
-  
-  // Escuchar mensaje de completado de impresión
-  const handleMessage = (event: MessageEvent) => {
-    if (event.data?.type === 'PRINT_COMPLETE') {
-      cleanupPrintContainer();
-    }
-  };
-  
-  window.addEventListener('message', handleMessage);
-  
-  // Función para limpiar el contenedor de impresión de forma segura
-  const cleanupPrintContainer = () => {
-    try {
-      window.removeEventListener('message', handleMessage);
-      // Usar requestAnimationFrame para asegurar que la limpieza ocurra
-      // después de que el navegador haya terminado de procesar la impresión
-      requestAnimationFrame(() => {
-        if (printContainer.parentNode) {
-          document.body.removeChild(printContainer);
-        }
-      });
-    } catch (e) {
-      console.warn('Error al limpiar contenedor de impresión:', e);
-    }
-  };
-  
-  // Limpiar después de un tiempo máximo por seguridad
-  setTimeout(cleanupPrintContainer, 8000);
+  const documentType = receiptType || "Boleta";
+  const pdfTitle = `${documentType}_N${data.saleNumber}`;
+  printViaIframe(html, pdfTitle);
 }
 
 export function getReceiptHtml(
@@ -364,53 +298,111 @@ export function getShiftSummaryHtml(data: ShiftSummaryData): string {
   return html;
 }
 
-export function printShiftSummary(data: ShiftSummaryData) {
-  const html = getShiftSummaryHtml(data);
-  
-  // Crear contenedor aislado para evitar interferencias con UI
+/**
+ * Helper genérico para imprimir HTML en un iframe off-screen.
+ * Evita pantalla negra usando iframe visible pero posicionado fuera de pantalla.
+ * Opcionalmente cambia el título del documento para nombrar el PDF.
+ */
+function printViaIframe(html: string, pdfTitle?: string) {
+  // Limpiar contenedores previos
+  document.querySelectorAll('[data-print-container]').forEach(el => {
+    el.parentNode?.removeChild(el);
+  });
+
   const printContainer = document.createElement("div");
   printContainer.setAttribute("data-print-container", "true");
   printContainer.style.cssText = `
     position: fixed !important;
-    z-index: -9999 !important;
-    visibility: hidden !important;
-    width: 0 !important;
-    height: 0 !important;
+    left: -99999px !important;
+    top: 0 !important;
+    width: 1px !important;
+    height: 1px !important;
     overflow: hidden !important;
     pointer-events: none !important;
   `;
-  
+
   const iframe = document.createElement("iframe");
   iframe.style.cssText = `
-    position: absolute !important;
-    width: 0 !important;
-    height: 0 !important;
+    width: 80mm !important;
+    height: 297mm !important;
     border: 0 !important;
-    visibility: hidden !important;
   `;
   iframe.setAttribute("aria-hidden", "true");
   iframe.setAttribute("tabindex", "-1");
-  
+
   printContainer.appendChild(iframe);
   document.body.appendChild(printContainer);
-  
+
   const doc = iframe.contentDocument || iframe.contentWindow?.document;
   if (!doc) {
     document.body.removeChild(printContainer);
     return;
   }
+
+  // Remover auto-print scripts del HTML y agregar solo afterprint listener
+  const cleanHtml = html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace('</body>', `
+    <script>
+      window.addEventListener('afterprint', function() {
+        setTimeout(function() {
+          if (window.parent !== window) {
+            try { window.parent.postMessage({ type: 'PRINT_COMPLETE' }, '*'); } catch(e) {}
+          }
+        }, 300);
+      });
+    </script>
+    </body>`);
+
   doc.open();
-  doc.write(html);
+  doc.write(cleanHtml);
   doc.close();
-  setTimeout(() => {
+
+  const cleanup = () => {
     try {
+      window.removeEventListener('message', handleMsg);
       requestAnimationFrame(() => {
-        if (printContainer.parentNode) {
-          document.body.removeChild(printContainer);
-        }
+        document.querySelectorAll('[data-print-container]').forEach(el => {
+          el.parentNode?.removeChild(el);
+        });
       });
     } catch {}
-  }, 4000);
+  };
+
+  const handleMsg = (event: MessageEvent) => {
+    if (event.data?.type === 'PRINT_COMPLETE') cleanup();
+  };
+  window.addEventListener('message', handleMsg);
+
+  const originalTitle = document.title;
+  const tryPrint = () => {
+    try {
+      if (pdfTitle) document.title = pdfTitle;
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      setTimeout(() => { document.title = originalTitle; }, 1000);
+    } catch(e) {
+      console.warn('Error al imprimir:', e);
+      document.title = originalTitle;
+    }
+  };
+
+  if (iframe.contentWindow) {
+    iframe.contentWindow.addEventListener('load', () => setTimeout(tryPrint, 150));
+    setTimeout(tryPrint, 500);
+  } else {
+    setTimeout(tryPrint, 500);
+  }
+
+  setTimeout(() => {
+    cleanup();
+    if (pdfTitle && document.title === pdfTitle) document.title = originalTitle;
+  }, 15000);
+}
+
+export function printShiftSummary(data: ShiftSummaryData) {
+  const html = getShiftSummaryHtml(data);
+  printViaIframe(html, `Resumen_Turno_${data.windowLabel.replace(/[\/\\:*?"<>|]/g, '-')}`);
 }
 
 // --- Resumen de Movimientos de Caja (sin ventas) ---
@@ -553,49 +545,5 @@ export function getCashMovementsSummaryHtml(
 
 export function printCashMovementsSummary(data: CashMovementsSummaryData) {
   const html = getCashMovementsSummaryHtml(data);
-  
-  // Crear contenedor aislado para evitar interferencias con UI
-  const printContainer = document.createElement("div");
-  printContainer.setAttribute("data-print-container", "true");
-  printContainer.style.cssText = `
-    position: fixed !important;
-    z-index: -9999 !important;
-    visibility: hidden !important;
-    width: 0 !important;
-    height: 0 !important;
-    overflow: hidden !important;
-    pointer-events: none !important;
-  `;
-  
-  const iframe = document.createElement("iframe");
-  iframe.style.cssText = `
-    position: absolute !important;
-    width: 0 !important;
-    height: 0 !important;
-    border: 0 !important;
-    visibility: hidden !important;
-  `;
-  iframe.setAttribute("aria-hidden", "true");
-  iframe.setAttribute("tabindex", "-1");
-  
-  printContainer.appendChild(iframe);
-  document.body.appendChild(printContainer);
-  
-  const doc = iframe.contentDocument || iframe.contentWindow?.document;
-  if (!doc) {
-    document.body.removeChild(printContainer);
-    return;
-  }
-  doc.open();
-  doc.write(html);
-  doc.close();
-  setTimeout(() => {
-    try {
-      requestAnimationFrame(() => {
-        if (printContainer.parentNode) {
-          document.body.removeChild(printContainer);
-        }
-      });
-    } catch {}
-  }, 4000);
+  printViaIframe(html, `Movimientos_Caja_${data.windowLabel.replace(/[\/\\:*?"<>|]/g, '-')}`);
 }
