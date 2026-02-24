@@ -12,14 +12,14 @@ export interface AuditAction {
 /**
  * Registra una acción en el audit log (versión básica)
  */
-export function logAudit(
+export async function logAudit(
   userId: number | null,
   username: string | null,
   action: AuditAction,
   ipAddress?: string
 ) {
   try {
-    db.insert(auditLog).values({
+    await db.insert(auditLog).values({
       userId,
       username,
       action: action.action,
@@ -30,7 +30,7 @@ export function logAudit(
           : action.entityId,
       details: action.details,
       ipAddress,
-    }).run();
+    });
   } catch (error) {
     // Silenciosamente fallar para no interrumpir la operación principal
     console.error("Error logging audit action:", error);

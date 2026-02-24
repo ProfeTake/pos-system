@@ -1,31 +1,35 @@
 import {
-  sqliteTable,
+  mysqlTable,
+  varchar,
+  int,
   text,
-  integer,
-  real,
+  boolean,
+  timestamp,
+  decimal,
+  double,
+  json,
+  mysqlEnum,
   index,
-  type AnySQLiteColumn,
-} from "drizzle-orm/sqlite-core";
+  type AnyMySqlColumn,
+} from "drizzle-orm/mysql-core";
 import { sql } from "drizzle-orm";
 
-export const users = sqliteTable(
+export const users = mysqlTable(
   "users",
   {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    tenantId: text("tenant_id"), // Multi-tenant support
-    username: text("username").notNull().unique(),
-    email: text("email"),
-    passwordHash: text("password_hash").notNull(),
-    role: text("role", { enum: ["superadmin", "admin", "manager", "vendedor"] })
+    id: int("id").primaryKey().autoincrement(),
+    tenantId: varchar("tenant_id", { length: 64 }),
+    username: varchar("username", { length: 255 }).notNull().unique(),
+    email: varchar("email", { length: 255 }),
+    passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+    role: mysqlEnum("role", ["superadmin", "admin", "manager", "vendedor"])
       .notNull()
       .default("vendedor"),
-    fullName: text("full_name").notNull(),
-    active: integer("active", { mode: "boolean" }).notNull().default(true),
-    cashRegisterId: text("cash_register_id"), // Caja asignada
-    createdBy: integer("created_by").references((): AnySQLiteColumn => users.id), // Quien creó al usuario
-    createdAt: integer("created_at", { mode: "timestamp" }).default(
-      sql`(unixepoch())`
-    ),
+    fullName: varchar("full_name", { length: 255 }).notNull(),
+    active: boolean("active").notNull().default(true),
+    cashRegisterId: varchar("cash_register_id", { length: 64 }),
+    createdBy: int("created_by").references((): AnyMySqlColumn => users.id),
+    createdAt: timestamp("created_at").defaultNow(),
   },
   (t) => ({
     usersTenantIdx: index("users_tenant_idx").on(t.tenantId),
@@ -37,17 +41,15 @@ export const users = sqliteTable(
 );
 
 // ============== UMBRALES DE STOCK POR CATEGORÍA ==============
-export const categoryStockThresholds = sqliteTable(
+export const categoryStockThresholds = mysqlTable(
   "category_stock_thresholds",
   {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    tenantId: text("tenant_id"), // Multi-tenant support
-    category: text("category").notNull().unique(),
-    minStock: integer("min_stock").notNull().default(0),
-    createdAt: integer("created_at", { mode: "timestamp" }).default(
-      sql`(unixepoch())`
-    ),
-    updatedAt: integer("updated_at", { mode: "timestamp" }),
+    id: int("id").primaryKey().autoincrement(),
+    tenantId: varchar("tenant_id", { length: 64 }),
+    category: varchar("category", { length: 255 }).notNull().unique(),
+    minStock: int("min_stock").notNull().default(0),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at"),
   },
   (t) => ({
     categoryThresholdsTenantIdx: index("category_thresholds_tenant_idx").on(t.tenantId),
@@ -57,30 +59,26 @@ export const categoryStockThresholds = sqliteTable(
   })
 );
 
-export const products = sqliteTable(
+export const products = mysqlTable(
   "products",
   {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    tenantId: text("tenant_id"), // Multi-tenant support
-    name: text("name").notNull(),
-    category: text("category").notNull(),
-    stock: integer("stock").notNull().default(0),
-    minStock: integer("min_stock").notNull().default(0),
-    price: integer("price").notNull().default(0),
-    cost: integer("cost").notNull().default(0),
-    marginPct: real("margin_pct").notNull().default(30),
-    barCode: text("bar_code"), // Can be null
-    ml: integer("ml").default(0),
-    measureUnit: text("measure_unit").default("ml"),
-    estado: text("estado", {
-      enum: ["NORMAL", "BAJO", "AGOTADO", "DESHABILITADO"],
-    }).default("NORMAL"),
-    supplier: text("supplier"), // Proveedor del producto
-    deletedAt: integer("deleted_at", { mode: "timestamp" }), // Soft delete
-    createdAt: integer("created_at", { mode: "timestamp" }).default(
-      sql`(unixepoch())`
-    ),
-    updatedAt: integer("updated_at", { mode: "timestamp" }),
+    id: int("id").primaryKey().autoincrement(),
+    tenantId: varchar("tenant_id", { length: 64 }),
+    name: varchar("name", { length: 255 }).notNull(),
+    category: varchar("category", { length: 255 }).notNull(),
+    stock: int("stock").notNull().default(0),
+    minStock: int("min_stock").notNull().default(0),
+    price: int("price").notNull().default(0),
+    cost: int("cost").notNull().default(0),
+    marginPct: double("margin_pct").notNull().default(30),
+    barCode: varchar("bar_code", { length: 128 }),
+    ml: int("ml").default(0),
+    measureUnit: varchar("measure_unit", { length: 32 }).default("ml"),
+    estado: mysqlEnum("estado", ["NORMAL", "BAJO", "AGOTADO", "DESHABILITADO"]).default("NORMAL"),
+    supplier: varchar("supplier", { length: 255 }),
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at"),
   },
   (t) => ({
     productsTenantIdx: index("products_tenant_idx").on(t.tenantId),
@@ -93,29 +91,23 @@ export const products = sqliteTable(
   })
 );
 
-export const sales = sqliteTable(
+export const sales = mysqlTable(
   "sales",
   {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    tenantId: text("tenant_id"), // Multi-tenant support
-    total: integer("total").notNull(),
-    paymentMethod: text("payment_method").notNull(), // "efectivo", "tarjeta", "transferencia"
-    customerName: text("customer_name"),
-    customerId: text("customer_id"), // Referencia a cliente
-    // Estado de la venta
-    status: text("status", {
-      enum: ["completed", "voided", "refunded"],
-    })
+    id: int("id").primaryKey().autoincrement(),
+    tenantId: varchar("tenant_id", { length: 64 }),
+    total: int("total").notNull(),
+    paymentMethod: varchar("payment_method", { length: 64 }).notNull(),
+    customerName: varchar("customer_name", { length: 255 }),
+    customerId: varchar("customer_id", { length: 36 }),
+    status: mysqlEnum("status", ["completed", "voided", "refunded"])
       .notNull()
       .default("completed"),
-    voidedAt: integer("voided_at", { mode: "timestamp" }),
-    voidedBy: integer("voided_by").references(() => users.id),
+    voidedAt: timestamp("voided_at"),
+    voidedBy: int("voided_by").references(() => users.id),
     voidReason: text("void_reason"),
-    // Referencia a venta original (para devoluciones)
-    originalSaleId: integer("original_sale_id"),
-    createdAt: integer("created_at", { mode: "timestamp" }).default(
-      sql`(unixepoch())`
-    ),
+    originalSaleId: int("original_sale_id"),
+    createdAt: timestamp("created_at").defaultNow(),
   },
   (t) => ({
     salesTenantIdx: index("sales_tenant_idx").on(t.tenantId),
@@ -126,20 +118,20 @@ export const sales = sqliteTable(
   })
 );
 
-export const saleItems = sqliteTable(
+export const saleItems = mysqlTable(
   "sale_items",
   {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    saleId: integer("sale_id")
+    id: int("id").primaryKey().autoincrement(),
+    saleId: int("sale_id")
       .references(() => sales.id, { onDelete: "cascade" })
       .notNull(),
-    productId: integer("product_id")
+    productId: int("product_id")
       .references(() => products.id)
       .notNull(),
-    productName: text("product_name").notNull(), // Snapshot of name at time of sale
-    quantity: integer("quantity").notNull(),
-    price: integer("price").notNull(), // Snapshot of price at time of sale
-    subtotal: integer("subtotal").notNull(),
+    productName: varchar("product_name", { length: 255 }).notNull(),
+    quantity: int("quantity").notNull(),
+    price: int("price").notNull(),
+    subtotal: int("subtotal").notNull(),
   },
   (t) => ({
     saleItemsSaleIdx: index("sale_items_sale_id_idx").on(t.saleId),
@@ -151,36 +143,34 @@ export const saleItems = sqliteTable(
   })
 );
 
-export const settings = sqliteTable(
+export const settings = mysqlTable(
   "settings",
   {
-    key: text("key").primaryKey(),
-    tenantId: text("tenant_id"), // Multi-tenant support
-    value: text("value", { mode: "json" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp" }).default(
-      sql`(unixepoch())`
-    ),
+    key: varchar("key", { length: 255 }).primaryKey(),
+    tenantId: varchar("tenant_id", { length: 64 }),
+    value: json("value").notNull(),
+    updatedAt: timestamp("updated_at").defaultNow(),
   },
   (t) => ({
     settingsTenantIdx: index("settings_tenant_idx").on(t.tenantId),
   })
 );
 
-export const cashSessions = sqliteTable(
+export const cashSessions = mysqlTable(
   "cash_sessions",
   {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    tenantId: text("tenant_id"), // Multi-tenant support
-    userId: integer("user_id").references(() => users.id),
-    openTime: integer("open_time", { mode: "timestamp" }).notNull(),
-    closeTime: integer("close_time", { mode: "timestamp" }),
-    initialCash: integer("initial_cash").notNull(),
-    finalCash: integer("final_cash"),
-    declaredCash: integer("declared_cash"),
-    difference: integer("difference"),
+    id: int("id").primaryKey().autoincrement(),
+    tenantId: varchar("tenant_id", { length: 64 }),
+    userId: int("user_id").references(() => users.id),
+    openTime: timestamp("open_time").notNull(),
+    closeTime: timestamp("close_time"),
+    initialCash: int("initial_cash").notNull(),
+    finalCash: int("final_cash"),
+    declaredCash: int("declared_cash"),
+    difference: int("difference"),
     notes: text("notes"),
-    windowOpen: integer("window_open", { mode: "timestamp" }), // Operational window start time
-    windowClose: integer("window_close", { mode: "timestamp" }), // Expected close time
+    windowOpen: timestamp("window_open"),
+    windowClose: timestamp("window_close"),
   },
   (t) => ({
     cashSessionsTenantIdx: index("cash_sessions_tenant_idx").on(t.tenantId),
@@ -189,19 +179,17 @@ export const cashSessions = sqliteTable(
   })
 );
 
-export const cashMovements = sqliteTable(
+export const cashMovements = mysqlTable(
   "cash_movements",
   {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    sessionId: integer("session_id")
+    id: int("id").primaryKey().autoincrement(),
+    sessionId: int("session_id")
       .references(() => cashSessions.id, { onDelete: "cascade" })
       .notNull(),
-    type: text("type", { enum: ["INGRESO", "EGRESO"] }).notNull(),
-    amount: integer("amount").notNull(),
-    reason: text("reason").notNull(),
-    createdAt: integer("created_at", { mode: "timestamp" }).default(
-      sql`(unixepoch())`
-    ),
+    type: mysqlEnum("type", ["INGRESO", "EGRESO"]).notNull(),
+    amount: int("amount").notNull(),
+    reason: varchar("reason", { length: 500 }).notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
   },
   (t) => ({
     cashMovementsSessionIdx: index("cash_movements_session_id_idx").on(
@@ -214,42 +202,31 @@ export const cashMovements = sqliteTable(
 );
 
 // ============== PROMOCIONES ==============
-export const promotions = sqliteTable(
+export const promotions = mysqlTable(
   "promotions",
   {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    tenantId: text("tenant_id"), // Multi-tenant support
-    name: text("name").notNull(),
+    id: int("id").primaryKey().autoincrement(),
+    tenantId: varchar("tenant_id", { length: 64 }),
+    name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),
-    type: text("type", {
-      enum: ["percentage", "fixed", "bundle", "2x1", "3x2"],
-    }).notNull(),
-    value: real("value"), // Porcentaje o monto fijo de descuento
-    active: integer("active", { mode: "boolean" }).notNull().default(true),
-    // Alcance: productos específicos, categoría, o todos
-    scope: text("scope", {
-      enum: ["product", "category", "all"],
-    })
+    type: mysqlEnum("type", ["percentage", "fixed", "bundle", "2x1", "3x2"]).notNull(),
+    value: double("value"),
+    active: boolean("active").notNull().default(true),
+    scope: mysqlEnum("scope", ["product", "category", "all"])
       .notNull()
       .default("product"),
-    productIds: text("product_ids", { mode: "json" }).$type<number[]>(), // IDs de productos si scope=product
-    categoryName: text("category_name"), // Nombre de categoría si scope=category
-    // Límites
-    startDate: integer("start_date", { mode: "timestamp" }),
-    endDate: integer("end_date", { mode: "timestamp" }),
-    maxUses: integer("max_uses"), // Límite total de usos
-    usedCount: integer("used_count").notNull().default(0),
-    minPurchase: integer("min_purchase"), // Compra mínima para aplicar
-    // Bundle specific
-    bundleQty: integer("bundle_qty"), // Cantidad para bundle (ej: 2 en 2x1)
-    bundlePrice: integer("bundle_price"), // Precio del bundle
-    // Código de barras especial (para escanear promoción)
-    barcode: text("barcode"),
-    // Metadatos
-    createdAt: integer("created_at", { mode: "timestamp" }).default(
-      sql`(unixepoch())`
-    ),
-    updatedAt: integer("updated_at", { mode: "timestamp" }),
+    productIds: json("product_ids").$type<number[]>(),
+    categoryName: varchar("category_name", { length: 255 }),
+    startDate: timestamp("start_date"),
+    endDate: timestamp("end_date"),
+    maxUses: int("max_uses"),
+    usedCount: int("used_count").notNull().default(0),
+    minPurchase: int("min_purchase"),
+    bundleQty: int("bundle_qty"),
+    bundlePrice: int("bundle_price"),
+    barcode: varchar("barcode", { length: 128 }),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at"),
   },
   (t) => ({
     promotionsTenantIdx: index("promotions_tenant_idx").on(t.tenantId),
@@ -260,35 +237,29 @@ export const promotions = sqliteTable(
 );
 
 // ============== DOCUMENTOS FISCALES (SII / BOLETAS) ==============
-export const fiscalDocuments = sqliteTable(
+export const fiscalDocuments = mysqlTable(
   "fiscal_documents",
   {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    tenantId: text("tenant_id"),
-    saleId: integer("sale_id")
+    id: int("id").primaryKey().autoincrement(),
+    tenantId: varchar("tenant_id", { length: 64 }),
+    saleId: int("sale_id")
       .references(() => sales.id, { onDelete: "cascade" })
       .notNull(),
-    documentType: text("document_type", {
-      enum: ["boleta"],
-    })
+    documentType: mysqlEnum("document_type", ["boleta"])
       .notNull()
       .default("boleta"),
-    provider: text("provider").notNull().default("none"),
-    status: text("status", {
-      enum: ["pending", "issued", "failed"],
-    })
+    provider: varchar("provider", { length: 64 }).notNull().default("none"),
+    status: mysqlEnum("status", ["pending", "issued", "failed"])
       .notNull()
       .default("pending"),
-    folio: integer("folio"),
-    trackId: text("track_id"),
-    siiEnv: text("sii_env"),
+    folio: int("folio"),
+    trackId: varchar("track_id", { length: 255 }),
+    siiEnv: varchar("sii_env", { length: 64 }),
     xml: text("xml"),
     lastError: text("last_error"),
-    response: text("response", { mode: "json" }),
-    createdAt: integer("created_at", { mode: "timestamp" }).default(
-      sql`(unixepoch())`
-    ),
-    updatedAt: integer("updated_at", { mode: "timestamp" }),
+    response: json("response"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at"),
   },
   (t) => ({
     fiscalDocsTenantIdx: index("fiscal_documents_tenant_idx").on(t.tenantId),
@@ -299,26 +270,26 @@ export const fiscalDocuments = sqliteTable(
 );
 
 // ============== CLIENTES ==============
-export const customers = sqliteTable(
+export const customers = mysqlTable(
   "customers",
   {
-    id: text("id").primaryKey().notNull(),
-    tenantId: text("tenant_id"), // Multi-tenant support
-    name: text("name").notNull(),
-    email: text("email"),
-    phone: text("phone"),
-    rut: text("rut"),
+    id: varchar("id", { length: 36 }).primaryKey().notNull(),
+    tenantId: varchar("tenant_id", { length: 64 }),
+    name: varchar("name", { length: 255 }).notNull(),
+    email: varchar("email", { length: 255 }),
+    phone: varchar("phone", { length: 32 }),
+    rut: varchar("rut", { length: 20 }),
     address: text("address"),
-    creditLimit: real("credit_limit").notNull().default(0),
-    creditUsed: real("credit_used").notNull().default(0),
-    loyaltyPoints: integer("loyalty_points").notNull().default(0),
-    totalPurchases: real("total_purchases").notNull().default(0),
-    totalSales: integer("total_sales").notNull().default(0),
-    lastPurchase: integer("last_purchase"),
+    creditLimit: decimal("credit_limit", { precision: 12, scale: 2 }).notNull().default("0"),
+    creditUsed: decimal("credit_used", { precision: 12, scale: 2 }).notNull().default("0"),
+    loyaltyPoints: int("loyalty_points").notNull().default(0),
+    totalPurchases: decimal("total_purchases", { precision: 12, scale: 2 }).notNull().default("0"),
+    totalSales: int("total_sales").notNull().default(0),
+    lastPurchase: timestamp("last_purchase"),
     notes: text("notes"),
-    active: integer("active").notNull().default(1),
-    createdAt: integer("created_at").default(sql`(unixepoch())`),
-    updatedAt: integer("updated_at"),
+    active: int("active").notNull().default(1),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at"),
   },
   (t) => ({
     customersTenantIdx: index("customers_tenant_idx").on(t.tenantId),
@@ -329,23 +300,23 @@ export const customers = sqliteTable(
 );
 
 // ============== DEUDAS DE CLIENTES ==============
-export const customerDebts = sqliteTable(
+export const customerDebts = mysqlTable(
   "customer_debts",
   {
-    id: text("id").primaryKey().notNull(),
-    customerId: text("customer_id")
+    id: varchar("id", { length: 36 }).primaryKey().notNull(),
+    customerId: varchar("customer_id", { length: 36 })
       .notNull()
       .references(() => customers.id, { onDelete: "cascade" }),
-    saleId: integer("sale_id").references(() => sales.id, {
+    saleId: int("sale_id").references(() => sales.id, {
       onDelete: "set null",
     }),
-    amount: real("amount").notNull(),
-    amountPaid: real("amount_paid").notNull().default(0),
-    dueDate: integer("due_date"),
-    status: text("status").notNull().default("pending"),
+    amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+    amountPaid: decimal("amount_paid", { precision: 12, scale: 2 }).notNull().default("0"),
+    dueDate: timestamp("due_date"),
+    status: varchar("status", { length: 32 }).notNull().default("pending"),
     notes: text("notes"),
-    createdAt: integer("created_at").default(sql`(unixepoch())`),
-    updatedAt: integer("updated_at"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at"),
   },
   (t) => ({
     customerDebtsCustomerIdx: index("customer_debts_customer_idx").on(
@@ -357,23 +328,23 @@ export const customerDebts = sqliteTable(
 );
 
 // ============== DEVOLUCIONES ==============
-export const returns = sqliteTable(
+export const returns = mysqlTable(
   "returns",
   {
-    id: text("id").primaryKey().notNull(),
-    tenantId: text("tenant_id"), // Multi-tenant support
-    saleId: integer("sale_id")
+    id: varchar("id", { length: 36 }).primaryKey().notNull(),
+    tenantId: varchar("tenant_id", { length: 64 }),
+    saleId: int("sale_id")
       .notNull()
       .references(() => sales.id),
     reason: text("reason").notNull(),
-    totalRefund: real("total_refund").notNull(),
-    method: text("method").notNull().default("cash"),
-    status: text("status").notNull().default("completed"),
-    processedBy: integer("processed_by")
+    totalRefund: decimal("total_refund", { precision: 12, scale: 2 }).notNull(),
+    method: varchar("method", { length: 32 }).notNull().default("cash"),
+    status: varchar("status", { length: 32 }).notNull().default("completed"),
+    processedBy: int("processed_by")
       .notNull()
       .references(() => users.id),
     notes: text("notes"),
-    createdAt: integer("created_at").default(sql`(unixepoch())`),
+    createdAt: timestamp("created_at").defaultNow(),
   },
   (t) => ({
     returnsTenantIdx: index("returns_tenant_idx").on(t.tenantId),
@@ -384,20 +355,20 @@ export const returns = sqliteTable(
 );
 
 // ============== ITEMS DE DEVOLUCIÓN ==============
-export const returnItems = sqliteTable(
+export const returnItems = mysqlTable(
   "return_items",
   {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    returnId: text("return_id")
+    id: int("id").primaryKey().autoincrement(),
+    returnId: varchar("return_id", { length: 36 })
       .notNull()
       .references(() => returns.id, { onDelete: "cascade" }),
-    productId: integer("product_id")
+    productId: int("product_id")
       .notNull()
       .references(() => products.id),
-    productName: text("product_name").notNull(),
-    quantity: integer("quantity").notNull(),
-    price: integer("price").notNull(),
-    subtotal: integer("subtotal").notNull(),
+    productName: varchar("product_name", { length: 255 }).notNull(),
+    quantity: int("quantity").notNull(),
+    price: int("price").notNull(),
+    subtotal: int("subtotal").notNull(),
   },
   (t) => ({
     returnItemsReturnIdx: index("return_items_return_idx").on(t.returnId),
@@ -406,21 +377,19 @@ export const returnItems = sqliteTable(
 );
 
 // ============== AUDIT LOG ==============
-export const auditLog = sqliteTable(
+export const auditLog = mysqlTable(
   "audit_log",
   {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    tenantId: text("tenant_id"), // Multi-tenant support
-    userId: integer("user_id").references(() => users.id),
-    username: text("username"),
-    action: text("action").notNull(), // "sale.create", "product.update", "login", etc.
-    entity: text("entity"), // "product", "sale", "user", "cash_session"
-    entityId: integer("entity_id"),
-    details: text("details", { mode: "json" }), // Datos adicionales
-    ipAddress: text("ip_address"),
-    createdAt: integer("created_at", { mode: "timestamp" }).default(
-      sql`(unixepoch())`
-    ),
+    id: int("id").primaryKey().autoincrement(),
+    tenantId: varchar("tenant_id", { length: 64 }),
+    userId: int("user_id").references(() => users.id),
+    username: varchar("username", { length: 255 }),
+    action: varchar("action", { length: 255 }).notNull(),
+    entity: varchar("entity", { length: 128 }),
+    entityId: int("entity_id"),
+    details: json("details"),
+    ipAddress: varchar("ip_address", { length: 45 }),
+    createdAt: timestamp("created_at").defaultNow(),
   },
   (t) => ({
     auditLogTenantIdx: index("audit_log_tenant_idx").on(t.tenantId),
@@ -432,48 +401,44 @@ export const auditLog = sqliteTable(
 );
 
 // ============== FACTURAS DE PROVEEDORES ==============
-export const supplierInvoices = sqliteTable(
+export const supplierInvoices = mysqlTable(
   "supplier_invoices",
   {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    tenantId: text("tenant_id"), // Multi-tenant support
-    invoiceNumber: text("invoice_number").notNull(),
-    supplierName: text("supplier_name").notNull(),
-    invoiceDate: integer("invoice_date").notNull(),
-    dueDate: integer("due_date"),
-    subtotal: integer("subtotal").notNull(),
-    taxAmount: integer("tax_amount").notNull(),
-    total: integer("total").notNull(),
-    paymentStatus: text("payment_status", {
-      enum: ["pending", "partial", "paid", "overdue"],
-    })
+    id: int("id").primaryKey().autoincrement(),
+    tenantId: varchar("tenant_id", { length: 64 }),
+    invoiceNumber: varchar("invoice_number", { length: 128 }).notNull(),
+    supplierName: varchar("supplier_name", { length: 255 }).notNull(),
+    invoiceDate: timestamp("invoice_date").notNull(),
+    dueDate: timestamp("due_date"),
+    subtotal: int("subtotal").notNull(),
+    taxAmount: int("tax_amount").notNull(),
+    total: int("total").notNull(),
+    paymentStatus: mysqlEnum("payment_status", ["pending", "partial", "paid", "overdue"])
       .notNull()
       .default("pending"),
-    amountPaid: integer("amount_paid").notNull().default(0),
-    amountPending: integer("amount_pending").notNull(),
-    currency: text("currency").notNull().default("CLP"),
-    expenseCategory: text("expense_category", {
-      enum: [
-        "inventory",
-        "services",
-        "utilities",
-        "rent",
-        "equipment",
-        "maintenance",
-        "marketing",
-        "transportation",
-        "supplies",
-        "other",
-      ],
-    }).notNull(),
-    accountingCode: text("accounting_code"),
+    amountPaid: int("amount_paid").notNull().default(0),
+    amountPending: int("amount_pending").notNull(),
+    currency: varchar("currency", { length: 8 }).notNull().default("CLP"),
+    expenseCategory: mysqlEnum("expense_category", [
+      "inventory",
+      "services",
+      "utilities",
+      "rent",
+      "equipment",
+      "maintenance",
+      "marketing",
+      "transportation",
+      "supplies",
+      "other",
+    ]).notNull(),
+    accountingCode: varchar("accounting_code", { length: 64 }),
     description: text("description"),
     notes: text("notes"),
-    registeredBy: integer("registered_by")
+    registeredBy: int("registered_by")
       .notNull()
       .references(() => users.id),
-    createdAt: integer("created_at").default(sql`(unixepoch())`),
-    updatedAt: integer("updated_at"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at"),
   },
   (t) => ({
     supplierInvoicesTenantIdx: index("supplier_invoices_tenant_idx").on(t.tenantId),
@@ -495,19 +460,19 @@ export const supplierInvoices = sqliteTable(
   })
 );
 
-export const supplierInvoiceItems = sqliteTable(
+export const supplierInvoiceItems = mysqlTable(
   "supplier_invoice_items",
   {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    invoiceId: integer("invoice_id")
+    id: int("id").primaryKey().autoincrement(),
+    invoiceId: int("invoice_id")
       .notNull()
       .references(() => supplierInvoices.id, { onDelete: "cascade" }),
-    productId: integer("product_id").references(() => products.id),
+    productId: int("product_id").references(() => products.id),
     description: text("description").notNull(),
-    quantity: integer("quantity").notNull(),
-    unitPrice: integer("unit_price").notNull(),
-    subtotal: integer("subtotal").notNull(),
-    taxRate: integer("tax_rate").notNull().default(19),
+    quantity: int("quantity").notNull(),
+    unitPrice: int("unit_price").notNull(),
+    subtotal: int("subtotal").notNull(),
+    taxRate: int("tax_rate").notNull().default(19),
   },
   (t) => ({
     supplierInvoiceItemsInvoiceIdx: index(
@@ -519,22 +484,22 @@ export const supplierInvoiceItems = sqliteTable(
   })
 );
 
-export const supplierInvoicePayments = sqliteTable(
+export const supplierInvoicePayments = mysqlTable(
   "supplier_invoice_payments",
   {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    invoiceId: integer("invoice_id")
+    id: int("id").primaryKey().autoincrement(),
+    invoiceId: int("invoice_id")
       .notNull()
       .references(() => supplierInvoices.id, { onDelete: "cascade" }),
-    paymentDate: integer("payment_date").notNull(),
-    amount: integer("amount").notNull(),
-    paymentMethod: text("payment_method").notNull(),
-    reference: text("reference"),
+    paymentDate: timestamp("payment_date").notNull(),
+    amount: int("amount").notNull(),
+    paymentMethod: varchar("payment_method", { length: 64 }).notNull(),
+    reference: varchar("reference", { length: 255 }),
     notes: text("notes"),
-    registeredBy: integer("registered_by")
+    registeredBy: int("registered_by")
       .notNull()
       .references(() => users.id),
-    createdAt: integer("created_at").default(sql`(unixepoch())`),
+    createdAt: timestamp("created_at").defaultNow(),
   },
   (t) => ({
     supplierInvoicePaymentsInvoiceIdx: index(

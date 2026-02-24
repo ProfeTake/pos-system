@@ -8,7 +8,7 @@ import { AuthRequest } from "../middlewares/auth.middleware";
 // Obtener todos los usuarios de la tienda (excluyendo superadmin)
 export const getStoreUsers = async (req: AuthRequest, res: Response) => {
   try {
-    const storeUsers = db
+    const storeUsers = await db
       .select({
         id: users.id,
         username: users.username,
@@ -21,8 +21,7 @@ export const getStoreUsers = async (req: AuthRequest, res: Response) => {
         createdAt: users.createdAt,
       })
       .from(users)
-      .where(ne(users.role, "superadmin"))
-      .all();
+      .where(ne(users.role, "superadmin"));
 
     res.json(storeUsers);
   } catch (error) {
@@ -35,7 +34,7 @@ export const getStoreUsers = async (req: AuthRequest, res: Response) => {
 export const getStoreUser = async (req: AuthRequest, res: Response) => {
   const id = String(req.params.id);
   try {
-    const user = db
+    const [user] = await db
       .select({
         id: users.id,
         username: users.username,
@@ -49,7 +48,7 @@ export const getStoreUser = async (req: AuthRequest, res: Response) => {
       })
       .from(users)
       .where(eq(users.id, parseInt(id)))
-      .get();
+      .limit(1);
 
     if (!user) {
       return res.status(404).json({ message: "Usuario no encontrado" });
@@ -79,11 +78,11 @@ export const createStoreUser = async (req: AuthRequest, res: Response) => {
 
   try {
     // Verificar si el username ya existe
-    const existing = db
+    const [existing] = await db
       .select()
       .from(users)
       .where(eq(users.username, username))
-      .get();
+      .limit(1);
 
     if (existing) {
       return res
@@ -93,7 +92,7 @@ export const createStoreUser = async (req: AuthRequest, res: Response) => {
 
     const passwordHash = await hashPassword(password);
 
-    const result = db
+    await db
       .insert(users)
       .values({
         username,
@@ -104,8 +103,10 @@ export const createStoreUser = async (req: AuthRequest, res: Response) => {
         active: true,
         cashRegisterId: cashRegisterId || null,
         createdBy: req.user.id,
-      })
-      .returning({
+      });
+
+    const [result] = await db
+      .select({
         id: users.id,
         username: users.username,
         email: users.email,
@@ -115,7 +116,9 @@ export const createStoreUser = async (req: AuthRequest, res: Response) => {
         cashRegisterId: users.cashRegisterId,
         createdAt: users.createdAt,
       })
-      .get();
+      .from(users)
+      .where(eq(users.username, username))
+      .limit(1);
 
     res.status(201).json(result);
   } catch (error) {
@@ -131,11 +134,11 @@ export const updateStoreUser = async (req: AuthRequest, res: Response) => {
     req.body;
 
   try {
-    const existingUser = db
+    const [existingUser] = await db
       .select()
       .from(users)
       .where(eq(users.id, parseInt(id)))
-      .get();
+      .limit(1);
 
     if (!existingUser) {
       return res.status(404).json({ message: "Usuario no encontrado" });
@@ -156,11 +159,11 @@ export const updateStoreUser = async (req: AuthRequest, res: Response) => {
 
     // Verificar si el nuevo username ya existe (si se está cambiando)
     if (username && username !== existingUser.username) {
-      const usernameExists = db
+      const [usernameExists] = await db
         .select()
         .from(users)
         .where(eq(users.username, username))
-        .get();
+        .limit(1);
 
       if (usernameExists) {
         return res
@@ -184,13 +187,12 @@ export const updateStoreUser = async (req: AuthRequest, res: Response) => {
       updateData.passwordHash = await hashPassword(password);
     }
 
-    db
+    await db
       .update(users)
       .set(updateData)
-      .where(eq(users.id, parseInt(id)))
-      .run();
+      .where(eq(users.id, parseInt(id)));
 
-    const result = db
+    const [result] = await db
       .select({
         id: users.id,
         username: users.username,
@@ -203,7 +205,7 @@ export const updateStoreUser = async (req: AuthRequest, res: Response) => {
       })
       .from(users)
       .where(eq(users.id, parseInt(id)))
-      .get();
+      .limit(1);
 
     res.json(result);
   } catch (error) {
@@ -217,11 +219,11 @@ export const deleteStoreUser = async (req: AuthRequest, res: Response) => {
   const id = String(req.params.id);
 
   try {
-    const existingUser = db
+    const [existingUser] = await db
       .select()
       .from(users)
       .where(eq(users.id, parseInt(id)))
-      .get();
+      .limit(1);
 
     if (!existingUser) {
       return res.status(404).json({ message: "Usuario no encontrado" });
@@ -236,11 +238,10 @@ export const deleteStoreUser = async (req: AuthRequest, res: Response) => {
 
     // Verificar que no sea el último admin
     if (existingUser.role === "admin") {
-      const adminCount = db
+      const adminCount = await db
         .select()
         .from(users)
-        .where(eq(users.role, "admin"))
-        .all();
+        .where(eq(users.role, "admin"));
 
       if (adminCount.length <= 1) {
         return res
@@ -249,7 +250,7 @@ export const deleteStoreUser = async (req: AuthRequest, res: Response) => {
       }
     }
 
-    db.delete(users).where(eq(users.id, parseInt(id))).run();
+    await db.delete(users).where(eq(users.id, parseInt(id)));
 
     res.json({ success: true, message: "Usuario eliminado" });
   } catch (error) {
@@ -263,11 +264,11 @@ export const toggleUserStatus = async (req: AuthRequest, res: Response) => {
   const id = String(req.params.id);
 
   try {
-    const existingUser = db
+    const [existingUser] = await db
       .select()
       .from(users)
       .where(eq(users.id, parseInt(id)))
-      .get();
+      .limit(1);
 
     if (!existingUser) {
       return res.status(404).json({ message: "Usuario no encontrado" });
@@ -282,11 +283,10 @@ export const toggleUserStatus = async (req: AuthRequest, res: Response) => {
 
     // Verificar que no sea el último admin activo
     if (existingUser.role === "admin" && existingUser.active) {
-      const activeAdmins = db
+      const activeAdmins = await db
         .select()
         .from(users)
-        .where(and(eq(users.role, "admin"), eq(users.active, true)))
-        .all();
+        .where(and(eq(users.role, "admin"), eq(users.active, true)));
 
       if (activeAdmins.length <= 1) {
         return res
@@ -297,20 +297,19 @@ export const toggleUserStatus = async (req: AuthRequest, res: Response) => {
       }
     }
 
-    db
+    await db
       .update(users)
       .set({ active: !existingUser.active })
-      .where(eq(users.id, parseInt(id)))
-      .run();
+      .where(eq(users.id, parseInt(id)));
 
-    const result = db
+    const [result] = await db
       .select({
         id: users.id,
         active: users.active,
       })
       .from(users)
       .where(eq(users.id, parseInt(id)))
-      .get();
+      .limit(1);
 
     res.json(result);
   } catch (error) {

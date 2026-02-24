@@ -1,19 +1,21 @@
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/mysql2";
+import mysql from "mysql2/promise";
 import * as schema from "./schema";
 import dotenv from "dotenv";
 import path from "path";
 
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
-const dbPath =
-  process.env.DATABASE_URL || path.resolve(__dirname, "../../db.sqlite");
+const databaseUrl =
+  process.env.DATABASE_URL || "mysql://root:root@localhost:3306/pos";
 
-const sqlite = new Database(dbPath);
+const pool = mysql.createPool({
+  uri: databaseUrl,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  // Timezone handling — server stores UTC
+  timezone: "+00:00",
+});
 
-// SQLite optimizations
-sqlite.pragma("journal_mode = WAL");
-sqlite.pragma("busy_timeout = 5000");
-sqlite.pragma("foreign_keys = ON");
-
-export const db = drizzle(sqlite, { schema });
+export const db = drizzle(pool, { schema, mode: "default" });

@@ -40,11 +40,10 @@ export const getAll = async (req: Request, res: Response) => {
   try {
     const { status, activeOnly } = req.query;
 
-    let allPromos = db
+    const allPromos = await db
       .select()
       .from(promotions)
-      .orderBy(desc(promotions.createdAt))
-      .all();
+      .orderBy(desc(promotions.createdAt));
 
     // Agregar status calculado
     const promosWithStatus = allPromos.map((p) => ({
@@ -77,7 +76,7 @@ export const getActive = async (req: Request, res: Response) => {
   try {
     const now = Math.floor(Date.now() / 1000);
 
-    const activePromos = db
+    const activePromos = await db
       .select()
       .from(promotions)
       .where(
@@ -93,8 +92,7 @@ export const getActive = async (req: Request, res: Response) => {
             sql`${promotions.usedCount} < ${promotions.maxUses}`
           )
         )
-      )
-      .all();
+      );
 
     res.json(activePromos);
   } catch (error) {
@@ -111,11 +109,11 @@ export const getById = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
 
-    const promo = db
+    const [promo] = await db
       .select()
       .from(promotions)
       .where(eq(promotions.id, parseInt(id)))
-      .get();
+      .limit(1);
 
     if (!promo) {
       return res.status(404).json({ message: "Promoción no encontrada" });
@@ -140,11 +138,11 @@ export const getByBarcode = async (req: Request, res: Response) => {
   try {
     const code = String(req.params.code);
 
-    const promo = db
+    const [promo] = await db
       .select()
       .from(promotions)
       .where(eq(promotions.barcode, code))
-      .get();
+      .limit(1);
 
     if (!promo) {
       return res.status(404).json({ message: "Promoción no encontrada" });
@@ -200,18 +198,17 @@ export const create = async (req: Request, res: Response) => {
     let promoBarcode = barcode;
     if (!promoBarcode) {
       // Obtener el último ID para generar el código
-      const lastPromo = db
+      const [lastPromo] = await db
         .select()
         .from(promotions)
         .orderBy(desc(promotions.id))
-        .limit(1)
-        .get();
+        .limit(1);
 
       const nextId = (lastPromo?.id || 0) + 1;
       promoBarcode = `PROMO-${String(nextId).padStart(5, '0')}`;
     }
 
-    const newPromo = db
+    const [insertResult] = await db
       .insert(promotions)
       .values({
         name,
@@ -230,8 +227,10 @@ export const create = async (req: Request, res: Response) => {
         bundleQty: bundleQty || null,
         bundlePrice: bundlePrice || null,
         barcode: promoBarcode,
-      })
-      .returning().get();
+      });
+
+    const newPromoId = insertResult.insertId;
+    const [newPromo] = await db.select().from(promotions).where(eq(promotions.id, Number(newPromoId))).limit(1);
 
     res.status(201).json({
       ...newPromo,
@@ -286,11 +285,10 @@ export const update = async (req: Request, res: Response) => {
       }
     }
 
-    db.update(promotions)
+    await db.update(promotions)
       .set(updateData)
-      .where(eq(promotions.id, parseInt(id)))
-      .run();
-    const updated = db.select().from(promotions).where(eq(promotions.id, parseInt(id))).get();
+      .where(eq(promotions.id, parseInt(id)));
+    const [updated] = await db.select().from(promotions).where(eq(promotions.id, parseInt(id))).limit(1);
 
     if (!updated) {
       return res.status(404).json({ message: "Promoción no encontrada" });
@@ -315,13 +313,13 @@ export const remove = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
 
-    const deleted = db.select().from(promotions).where(eq(promotions.id, parseInt(id))).get();
+    const [deleted] = await db.select().from(promotions).where(eq(promotions.id, parseInt(id))).limit(1);
 
     if (!deleted) {
       return res.status(404).json({ message: "Promoción no encontrada" });
     }
 
-    db.delete(promotions).where(eq(promotions.id, parseInt(id))).run();
+    await db.delete(promotions).where(eq(promotions.id, parseInt(id)));
 
     res.json({ message: "Promoción eliminada", id: deleted.id });
   } catch (error) {
@@ -338,24 +336,23 @@ export const toggle = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
 
-    const promo = db
+    const [promo] = await db
       .select()
       .from(promotions)
       .where(eq(promotions.id, parseInt(id)))
-      .get();
+      .limit(1);
 
     if (!promo) {
       return res.status(404).json({ message: "Promoción no encontrada" });
     }
 
-    db.update(promotions)
+    await db.update(promotions)
       .set({
         active: !promo.active,
         updatedAt: new Date(),
       })
-      .where(eq(promotions.id, parseInt(id)))
-      .run();
-    const updated = db.select().from(promotions).where(eq(promotions.id, parseInt(id))).get();
+      .where(eq(promotions.id, parseInt(id)));
+    const [updated] = await db.select().from(promotions).where(eq(promotions.id, parseInt(id))).limit(1);
 
     res.json({
       ...updated,
@@ -376,14 +373,13 @@ export const registerUse = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
 
-    db.update(promotions)
+    await db.update(promotions)
       .set({
         usedCount: sql`${promotions.usedCount} + 1`,
         updatedAt: new Date(),
       })
-      .where(eq(promotions.id, parseInt(id)))
-      .run();
-    const updated = db.select().from(promotions).where(eq(promotions.id, parseInt(id))).get();
+      .where(eq(promotions.id, parseInt(id)));
+    const [updated] = await db.select().from(promotions).where(eq(promotions.id, parseInt(id))).limit(1);
 
     if (!updated) {
       return res.status(404).json({ message: "Promoción no encontrada" });

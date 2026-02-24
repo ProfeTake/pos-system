@@ -35,9 +35,9 @@ async function seed() {
   console.log("👤 Creando usuarios...");
   const hashedPassword = await bcrypt.hash("admin123", 10);
 
-  const existingUsers = db.select().from(users).all();
+  const existingUsers = await db.select().from(users);
   if (existingUsers.length === 0) {
-    db.insert(users).values([
+    await db.insert(users).values([
       {
         username: "admin",
         passwordHash: hashedPassword,
@@ -56,14 +56,14 @@ async function seed() {
         role: "vendedor",
         fullName: "María González",
       },
-    ]).run();
+    ]);
   }
-  const allUsers = db.select().from(users).all();
+  const allUsers = await db.select().from(users);
   console.log(`   ✓ ${allUsers.length} usuarios\n`);
 
   // ============== PRODUCTOS ==============
   console.log("📦 Creando productos...");
-  const existingProducts = db.select().from(products).all();
+  const existingProducts = await db.select().from(products);
   if (existingProducts.length === 0) {
     const productData = [
       // Cervezas
@@ -344,14 +344,14 @@ async function seed() {
         measureUnit: "kg",
       },
     ];
-    db.insert(products).values(productData).run();
+    await db.insert(products).values(productData);
   }
-  const allProducts = db.select().from(products).all();
+  const allProducts = await db.select().from(products);
   console.log(`   ✓ ${allProducts.length} productos\n`);
 
   // ============== SESIONES DE CAJA ==============
   console.log("💵 Creando sesiones de caja...");
-  const existingSessions = db.select().from(cashSessions).all();
+  const existingSessions = await db.select().from(cashSessions);
   if (existingSessions.length === 0) {
     const now = new Date();
     const sessions = [];
@@ -382,14 +382,14 @@ async function seed() {
         windowClose: closeDate,
       });
     }
-    db.insert(cashSessions).values(sessions).run();
+    await db.insert(cashSessions).values(sessions);
   }
-  const allSessions = db.select().from(cashSessions).all();
+  const allSessions = await db.select().from(cashSessions);
   console.log(`   ✓ ${allSessions.length} sesiones de caja\n`);
 
   // ============== VENTAS ==============
   console.log("🛒 Creando ventas...");
-  const existingSales = db.select().from(sales).all();
+  const existingSales = await db.select().from(sales);
   if (existingSales.length === 0) {
     const now = new Date();
     const paymentMethods = ["cash", "debit", "credit", "transfer"];
@@ -457,7 +457,7 @@ async function seed() {
 
     // Insertar ventas y sus items
     for (const sale of salesData) {
-      const { id: newSaleId } = db
+      const [insertResult] = await db
         .insert(sales)
         .values({
           total: sale.total,
@@ -467,29 +467,28 @@ async function seed() {
           voidedAt: sale.voidedAt,
           voidReason: sale.voidReason,
           createdAt: sale.date,
-        })
-        .returning()
-        .get();
+        });
+      const newSaleId = insertResult.insertId;
 
       for (const item of sale.items) {
-        db.insert(saleItems).values({
+        await db.insert(saleItems).values({
           saleId: newSaleId,
           productId: item.product.id,
           productName: item.product.name,
           quantity: item.qty,
           price: item.product.price,
           subtotal: item.subtotal,
-        }).run();
+        });
       }
     }
   }
-  const allSales = db.select().from(sales).all();
-  const allItems = db.select().from(saleItems).all();
+  const allSales = await db.select().from(sales);
+  const allItems = await db.select().from(saleItems);
   console.log(`   ✓ ${allSales.length} ventas con ${allItems.length} items\n`);
 
   // ============== MOVIMIENTOS DE CAJA ==============
   console.log("💰 Creando movimientos de caja...");
-  const existingMovements = db.select().from(cashMovements).all();
+  const existingMovements = await db.select().from(cashMovements);
   if (existingMovements.length === 0) {
     const movements: {
       sessionId: number;
@@ -517,17 +516,17 @@ async function seed() {
       }
     }
     if (movements.length > 0) {
-      db.insert(cashMovements).values(movements).run();
+      await db.insert(cashMovements).values(movements);
     }
   }
-  const allMovements = db.select().from(cashMovements).all();
+  const allMovements = await db.select().from(cashMovements);
   console.log(`   ✓ ${allMovements.length} movimientos de caja\n`);
 
   // ============== PROMOCIONES ==============
   console.log("🎉 Creando promociones...");
-  const existingPromos = db.select().from(promotions).all();
+  const existingPromos = await db.select().from(promotions);
   if (existingPromos.length === 0) {
-    db.insert(promotions).values([
+    await db.insert(promotions).values([
       {
         name: "2x1 en Cervezas Cristal",
         description: "Lleva 2 Cristal 1L por el precio de 1",
@@ -579,14 +578,14 @@ async function seed() {
         usedCount: 15,
         barcode: "PROMO3X2SNACKS",
       },
-    ]).run();
+    ]);
   }
-  const allPromos = db.select().from(promotions).all();
+  const allPromos = await db.select().from(promotions);
   console.log(`   ✓ ${allPromos.length} promociones\n`);
 
   // ============== AUDIT LOG ==============
   console.log("📋 Creando registros de auditoría...");
-  const existingAudit = db.select().from(auditLog).all();
+  const existingAudit = await db.select().from(auditLog);
   if (existingAudit.length === 0) {
     const auditData = [];
     const actions = [
@@ -622,9 +621,9 @@ async function seed() {
         createdAt: date,
       });
     }
-    db.insert(auditLog).values(auditData).run();
+    await db.insert(auditLog).values(auditData);
   }
-  const allAudit = db.select().from(auditLog).all();
+  const allAudit = await db.select().from(auditLog);
   console.log(`   ✓ ${allAudit.length} registros de auditoría\n`);
 
   console.log("✅ Seed completado exitosamente!");

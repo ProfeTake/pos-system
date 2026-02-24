@@ -10,11 +10,10 @@ export const getCategoryThresholds = async (
   res: Response
 ) => {
   try {
-    const thresholds = db
+    const thresholds = await db
       .select()
       .from(categoryStockThresholds)
-      .orderBy(categoryStockThresholds.category)
-      .all();
+      .orderBy(categoryStockThresholds.category);
 
     res.json(thresholds);
   } catch (error) {
@@ -44,23 +43,21 @@ export const upsertCategoryThreshold = async (
 
   try {
     // Usar upsert (insert o update si existe)
-    db
+    await db
       .insert(categoryStockThresholds)
       .values({
         category,
         minStock,
       })
-      .onConflictDoUpdate({
-        target: categoryStockThresholds.category,
+      .onDuplicateKeyUpdate({
         set: { minStock, updatedAt: new Date() },
-      })
-      .run();
+      });
 
-    const result = db
+    const [result] = await db
       .select()
       .from(categoryStockThresholds)
       .where(eq(categoryStockThresholds.category, category))
-      .get();
+      .limit(1);
 
     res.json(result);
   } catch (error) {
@@ -77,20 +74,19 @@ export const deleteCategoryThreshold = async (
   const id = String(req.params.id);
 
   try {
-    const existing = db
+    const [existing] = await db
       .select()
       .from(categoryStockThresholds)
       .where(eq(categoryStockThresholds.id, parseInt(id)))
-      .get();
+      .limit(1);
 
     if (!existing) {
       return res.status(404).json({ message: "Umbral no encontrado" });
     }
 
-    db
+    await db
       .delete(categoryStockThresholds)
-      .where(eq(categoryStockThresholds.id, parseInt(id)))
-      .run();
+      .where(eq(categoryStockThresholds.id, parseInt(id)));
 
     res.json({ success: true, message: "Umbral eliminado" });
   } catch (error) {
@@ -114,28 +110,24 @@ export const applyCategoryThreshold = async (
 
   try {
     // Count products that will be updated
-    const affectedProducts = db
+    const affectedProducts = await db
       .select({ id: products.id })
       .from(products)
-      .where(eq(products.category, category))
-      .all();
+      .where(eq(products.category, category));
 
     // Actualizar todos los productos de la categoría
-    db
+    await db
       .update(products)
       .set({ minStock })
-      .where(eq(products.category, category))
-      .run();
+      .where(eq(products.category, category));
 
     // Guardar también el umbral para referencia futura
-    db
+    await db
       .insert(categoryStockThresholds)
       .values({ category, minStock })
-      .onConflictDoUpdate({
-        target: categoryStockThresholds.category,
+      .onDuplicateKeyUpdate({
         set: { minStock, updatedAt: new Date() },
-      })
-      .run();
+      });
 
     res.json({
       success: true,
@@ -154,11 +146,10 @@ export const getAvailableCategories = async (
   res: Response
 ) => {
   try {
-    const categories = db
+    const categories = await db
       .selectDistinct({ category: products.category })
       .from(products)
-      .orderBy(products.category)
-      .all();
+      .orderBy(products.category);
 
     res.json(categories.map((c) => c.category));
   } catch (error) {

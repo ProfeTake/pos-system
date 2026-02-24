@@ -52,17 +52,14 @@ export const getMetrics = async (req: Request, res: Response) => {
     const period = (req.query.period as string) || "week";
     const { start, end } = getPeriodDates(period);
 
-    const startTimestamp = Math.floor(start.getTime() / 1000);
-    const endTimestamp = Math.floor(end.getTime() / 1000);
-
-    // Ventas del período - usar raw column name para evitar problemas con mode: timestamp
+    // Ventas del período
     const [salesData] = await db
       .select({
         count: sql<number>`count(*)`,
         total: sql<number>`coalesce(sum(${sales.total}), 0)`,
       })
       .from(sales)
-      .where(sql`created_at >= ${startTimestamp} AND created_at <= ${endTimestamp}`);
+      .where(sql`created_at >= ${start} AND created_at <= ${end}`);
 
     // Productos vendidos
     const [itemsSold] = await db
@@ -71,7 +68,7 @@ export const getMetrics = async (req: Request, res: Response) => {
       })
       .from(saleItems)
       .innerJoin(sales, eq(saleItems.saleId, sales.id))
-      .where(sql`sales.created_at >= ${startTimestamp} AND sales.created_at <= ${endTimestamp}`);
+      .where(sql`sales.created_at >= ${start} AND sales.created_at <= ${end}`);
 
     // Top productos por cantidad vendida
     const topProductsRaw = await db
@@ -83,7 +80,7 @@ export const getMetrics = async (req: Request, res: Response) => {
       })
       .from(saleItems)
       .innerJoin(sales, eq(saleItems.saleId, sales.id))
-      .where(sql`sales.created_at >= ${startTimestamp} AND sales.created_at <= ${endTimestamp}`)
+      .where(sql`sales.created_at >= ${start} AND sales.created_at <= ${end}`)
       .groupBy(saleItems.productId, saleItems.productName)
       .orderBy(desc(sql`sum(${saleItems.quantity})`))
       .limit(10);
@@ -95,7 +92,7 @@ export const getMetrics = async (req: Request, res: Response) => {
       totalRevenue: p.revenue,
     }));
 
-    // Ventas por categoría - usar nombre de columna raw para evitar problemas con mode: timestamp
+    // Ventas por categoría
     const categoryStatsRaw = await db
       .select({
         category: products.category,
@@ -105,7 +102,7 @@ export const getMetrics = async (req: Request, res: Response) => {
       .from(saleItems)
       .innerJoin(sales, eq(saleItems.saleId, sales.id))
       .innerJoin(products, eq(saleItems.productId, products.id))
-      .where(sql`sales.created_at >= ${startTimestamp} AND sales.created_at <= ${endTimestamp}`)
+      .where(sql`sales.created_at >= ${start} AND sales.created_at <= ${end}`)
       .groupBy(products.category)
       .orderBy(desc(sql`sum(${saleItems.subtotal})`));
 
@@ -123,13 +120,11 @@ export const getMetrics = async (req: Request, res: Response) => {
         total: sql<number>`sum(${sales.total})`,
       })
       .from(sales)
-      .where(sql`created_at >= ${startTimestamp} AND created_at <= ${endTimestamp}`)
+      .where(sql`created_at >= ${start} AND created_at <= ${end}`)
       .groupBy(sales.paymentMethod);
 
     // Productos estancados (con stock pero sin ventas en 30 días)
-    const thirtyDaysAgo = Math.floor(
-      (Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000
-    );
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const allProducts = await db
       .select()
       .from(products)
@@ -169,7 +164,7 @@ export const getMetrics = async (req: Request, res: Response) => {
       .from(saleItems)
       .innerJoin(sales, eq(saleItems.saleId, sales.id))
       .innerJoin(products, eq(saleItems.productId, products.id))
-      .where(sql`sales.created_at >= ${startTimestamp} AND sales.created_at <= ${endTimestamp}`)
+      .where(sql`sales.created_at >= ${start} AND sales.created_at <= ${end}`)
       .groupBy(products.id, products.name)
       .orderBy(
         desc(
@@ -221,19 +216,17 @@ export const getSalesTrend = async (req: Request, res: Response) => {
     startDate.setDate(startDate.getDate() - Math.max(days - 1, 0));
     startDate.setHours(0, 0, 0, 0);
 
-    const startTimestamp = Math.floor(startDate.getTime() / 1000);
-
-    // Agrupar ventas por día usando hora local
+    // Agrupar ventas por día
     const trend = await db
       .select({
-        date: sql<string>`date(created_at, 'unixepoch', 'localtime')`,
+        date: sql<string>`DATE(created_at)`,
         count: sql<number>`count(*)`,
         total: sql<number>`sum(${sales.total})`,
       })
       .from(sales)
-      .where(sql`created_at >= ${startTimestamp}`)
-      .groupBy(sql`date(created_at, 'unixepoch', 'localtime')`)
-      .orderBy(sql`date(created_at, 'unixepoch', 'localtime')`);
+      .where(sql`created_at >= ${startDate}`)
+      .groupBy(sql`DATE(created_at)`)
+      .orderBy(sql`DATE(created_at)`);
 
     // Llenar días sin ventas con ceros
     const trendMap = new Map(trend.map((t) => [t.date, t]));
@@ -271,22 +264,18 @@ export const getSalesByHour = async (req: Request, res: Response) => {
     const period = (req.query.period as string) || "week";
     const { start, end } = getPeriodDates(period);
 
-    const startTimestamp = Math.floor(start.getTime() / 1000);
-    const endTimestamp = Math.floor(end.getTime() / 1000);
-
-    // Ajuste para zona horaria de Chile (UTC-3, o UTC-4 en horario de verano)
-    // SQLite usa unixepoch + localtime para extraer hora local
+    // MySQL HOUR() extrae la hora directamente del TIMESTAMP
     const hourlyStats = await db
       .select({
-        hour: sql<number>`cast(strftime('%H', created_at, 'unixepoch', 'localtime') as integer)`,
+        hour: sql<number>`HOUR(created_at)`,
         count: sql<number>`count(*)`,
         total: sql<number>`sum(${sales.total})`,
       })
       .from(sales)
-      .where(sql`created_at >= ${startTimestamp} AND created_at <= ${endTimestamp}`)
-      .groupBy(sql`cast(strftime('%H', created_at, 'unixepoch', 'localtime') as integer)`)
+      .where(sql`created_at >= ${start} AND created_at <= ${end}`)
+      .groupBy(sql`HOUR(created_at)`)
       .orderBy(
-        sql`cast(strftime('%H', created_at, 'unixepoch', 'localtime') as integer)`
+        sql`HOUR(created_at)`
       );
 
     // Llenar todas las horas (0-23)
@@ -319,11 +308,6 @@ export const getPeriodComparison = async (req: Request, res: Response) => {
     const current = getPeriodDates(period);
     const previous = getPreviousPeriodDates(period);
 
-    const currentStart = Math.floor(current.start.getTime() / 1000);
-    const currentEnd = Math.floor(current.end.getTime() / 1000);
-    const previousStart = Math.floor(previous.start.getTime() / 1000);
-    const previousEnd = Math.floor(previous.end.getTime() / 1000);
-
     // Métricas período actual
     const [currentData] = await db
       .select({
@@ -331,7 +315,7 @@ export const getPeriodComparison = async (req: Request, res: Response) => {
         total: sql<number>`coalesce(sum(${sales.total}), 0)`,
       })
       .from(sales)
-      .where(sql`created_at >= ${currentStart} AND created_at <= ${currentEnd}`);
+      .where(sql`created_at >= ${current.start} AND created_at <= ${current.end}`);
 
     // Métricas período anterior
     const [previousData] = await db
@@ -340,7 +324,7 @@ export const getPeriodComparison = async (req: Request, res: Response) => {
         total: sql<number>`coalesce(sum(${sales.total}), 0)`,
       })
       .from(sales)
-      .where(sql`created_at >= ${previousStart} AND created_at <= ${previousEnd}`);
+      .where(sql`created_at >= ${previous.start} AND created_at <= ${previous.end}`);
 
     const currentCount = currentData?.count || 0;
     const currentTotal = currentData?.total || 0;
@@ -388,9 +372,7 @@ export const getPeriodComparison = async (req: Request, res: Response) => {
 export const getRestockPredictions = async (req: Request, res: Response) => {
   try {
     const days = parseInt(req.query.days as string) || 30;
-    const startTimestamp = Math.floor(
-      (Date.now() - days * 24 * 60 * 60 * 1000) / 1000
-    );
+    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
     // Obtener ventas por producto en el período
     const salesByProduct = await db
@@ -400,7 +382,7 @@ export const getRestockPredictions = async (req: Request, res: Response) => {
       })
       .from(saleItems)
       .innerJoin(sales, eq(saleItems.saleId, sales.id))
-      .where(sql`sales.created_at >= ${startTimestamp}`)
+      .where(sql`sales.created_at >= ${startDate}`)
       .groupBy(saleItems.productId);
 
     const salesMap = new Map(

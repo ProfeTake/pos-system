@@ -15,9 +15,6 @@ RUN npm run build
 # Stage 2: Build backend
 FROM node:18-alpine AS backend-builder
 
-# Install build tools needed for better-sqlite3 (native C++ addon)
-RUN apk add --no-cache python3 make g++
-
 WORKDIR /app
 
 # Copy server package files and install dependencies
@@ -31,9 +28,6 @@ RUN npm run build
 
 # Stage 3: Production
 FROM node:18-alpine
-
-# Install runtime dependency for better-sqlite3
-RUN apk add --no-cache libstdc++
 
 WORKDIR /app/server
 

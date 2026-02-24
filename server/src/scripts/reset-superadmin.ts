@@ -1,45 +1,43 @@
 /**
  * Script para listar usuarios y resetear contraseña de superadmin
+ * MySQL version
  */
 
 import * as bcrypt from "bcryptjs";
-import Database from "better-sqlite3";
-import dotenv from "dotenv";
-import path from "path";
+import { db } from "../db";
+import { users } from "../db/schema";
+import { eq, or } from "drizzle-orm";
 
-dotenv.config({ path: path.resolve(__dirname, "../../.env") });
-
-function main() {
-  const dbPath =
-    process.env.DATABASE_URL || path.resolve(__dirname, "../../db.sqlite");
-
-  const db = new Database(dbPath);
-  db.pragma("foreign_keys = ON");
-
+async function main() {
   console.log("👥 Usuarios en la base de datos:\n");
 
-  const users = db.prepare(
-    "SELECT id, username, email, role, full_name, active FROM users"
-  ).all() as any[];
+  const allUsers = await db.select().from(users);
 
-  if (users.length === 0) {
+  if (allUsers.length === 0) {
     console.log("   No hay usuarios registrados");
   } else {
-    users.forEach((user: any) => {
+    allUsers.forEach((user) => {
       console.log(`   ID: ${user.id}`);
       console.log(`   Username: ${user.username}`);
       console.log(`   Email: ${user.email || "N/A"}`);
       console.log(`   Role: ${user.role}`);
-      console.log(`   Nombre: ${user.full_name}`);
+      console.log(`   Nombre: ${user.fullName}`);
       console.log(`   Activo: ${user.active ? "Sí" : "No"}`);
       console.log("");
     });
   }
 
   // Buscar superadmin
-  const superadmin = users.find(
-    (u: any) => u.username === "superadmin" || u.role === "superadmin"
-  );
+  const [superadmin] = await db
+    .select()
+    .from(users)
+    .where(
+      or(
+        eq(users.username, "superadmin"),
+        eq(users.role, "superadmin")
+      )
+    )
+    .limit(1);
 
   if (superadmin) {
     console.log(
@@ -51,10 +49,10 @@ function main() {
     const newPassword = "superadmin123";
     const hashedPassword = bcrypt.hashSync(newPassword, 10);
 
-    db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(
-      hashedPassword,
-      superadmin.id
-    );
+    await db
+      .update(users)
+      .set({ passwordHash: hashedPassword })
+      .where(eq(users.id, superadmin.id));
 
     console.log("\n✅ Contraseña reseteada exitosamente!");
     console.log("\n📋 Credenciales de superadmin:");
@@ -63,16 +61,19 @@ function main() {
     console.log(`   Role: ${superadmin.role}`);
   } else {
     console.log("⚠️  No se encontró usuario superadmin");
-    console.log("💡 ¿Crear usuario superadmin?");
+    console.log("💡 Creando usuario superadmin...");
 
     const username = "superadmin";
     const password = "superadmin123";
     const hashedPassword = bcrypt.hashSync(password, 10);
 
-    db.prepare(
-      `INSERT INTO users (username, password_hash, role, full_name, active)
-       VALUES (?, ?, ?, ?, ?)`
-    ).run(username, hashedPassword, "superadmin", "Super Administrator", 1);
+    await db.insert(users).values({
+      username,
+      passwordHash: hashedPassword,
+      role: "superadmin",
+      fullName: "Super Administrator",
+      active: true,
+    });
 
     console.log("\n✅ Usuario superadmin creado!");
     console.log("\n📋 Credenciales:");
@@ -81,7 +82,10 @@ function main() {
     console.log(`   Role: superadmin`);
   }
 
-  db.close();
+  process.exit(0);
 }
 
-main();
+main().catch((err) => {
+  console.error("❌ Error:", err);
+  process.exit(1);
+});

@@ -61,7 +61,7 @@ export function useInitialData() {
           .filter((sale: any) => sale && (sale.createdAt || sale.date)) // Filtrar ventas sin fecha
           .map((sale: any) => {
             const dateValue = sale.createdAt || sale.date;
-            // Si es timestamp numérico (unix epoch en segundos), convertir a ms
+            // MySQL returns ISO date strings; keep numeric fallback for legacy data
             const dateObj =
               typeof dateValue === "number"
                 ? new Date(dateValue * 1000)

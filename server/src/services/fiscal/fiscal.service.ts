@@ -22,21 +22,20 @@ export async function issueBoletaForSale(params: {
 }): Promise<FiscalIssueResult> {
   const provider = getProvider();
 
-  const sale = db.select().from(sales).where(eq(sales.id, params.saleId)).get();
+  const [sale] = await db.select().from(sales).where(eq(sales.id, params.saleId)).limit(1);
   if (!sale) {
     return { ok: false, status: "failed", message: "Venta no encontrada" };
   }
 
-  const items = db
+  const items = await db
     .select()
     .from(saleItems)
-    .where(eq(saleItems.saleId, params.saleId))
-    .all();
+    .where(eq(saleItems.saleId, params.saleId));
 
   const createdAtUnix = Number((sale as any).createdAt ?? 0);
 
   // Crear registro pending
-  const { id: fiscalDocId } = db
+  const [insertResult] = await db
     .insert(fiscalDocuments)
     .values({
       tenantId: params.tenantId,
@@ -44,9 +43,8 @@ export async function issueBoletaForSale(params: {
       provider: provider.name,
       status: "pending",
       siiEnv: process.env.SII_ENV || null,
-    } as any)
-    .returning()
-    .get();
+    } as any);
+  const fiscalDocId = insertResult.insertId;
 
   try {
     const result = await provider.issueBoleta({
@@ -64,7 +62,7 @@ export async function issueBoletaForSale(params: {
       })),
     });
 
-    db
+    await db
       .update(fiscalDocuments)
       .set({
         status: result.ok ? "issued" : "failed",
@@ -75,20 +73,18 @@ export async function issueBoletaForSale(params: {
         lastError: result.ok ? null : (result.message || "Error"),
         updatedAt: new Date(),
       } as any)
-      .where(eq(fiscalDocuments.id, fiscalDocId))
-      .run();
+      .where(eq(fiscalDocuments.id, fiscalDocId));
 
     return result;
   } catch (e: any) {
-    db
+    await db
       .update(fiscalDocuments)
       .set({
         status: "failed",
         lastError: e?.message || "Error emitiendo boleta",
         updatedAt: new Date(),
       } as any)
-      .where(eq(fiscalDocuments.id, fiscalDocId))
-      .run();
+      .where(eq(fiscalDocuments.id, fiscalDocId));
 
     return {
       ok: false,
@@ -103,9 +99,8 @@ export async function getFiscalDocumentsForSale(params: {
   tenantId: string;
   saleId: number;
 }) {
-  return db
+  return await db
     .select()
     .from(fiscalDocuments)
-    .where(eq(fiscalDocuments.saleId, params.saleId))
-    .all();
+    .where(eq(fiscalDocuments.saleId, params.saleId));
 }

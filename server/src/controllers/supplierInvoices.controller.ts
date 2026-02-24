@@ -14,11 +14,9 @@ type InsertInvoiceItem = typeof supplierInvoiceItems.$inferInsert;
 type InsertInvoicePayment = typeof supplierInvoicePayments.$inferInsert;
 
 // Helper para parsear fechas
-function parseDate(date: any): number {
-  if (!date) return Date.now();
-  if (typeof date === 'number') return date * 1000; // Asumir que es unix timestamp
-  const d = new Date(date);
-  return d.getTime();
+function parseDate(date: any): Date {
+  if (!date) return new Date();
+  return new Date(date);
 }
 
 // GET todas las facturas con filtros opcionales
@@ -48,12 +46,10 @@ export const getAll = async (req: TenantRequest, res: Response) => {
       conditions.push(eq(supplierInvoices.expenseCategory, category as any));
     }
     if (dateFrom) {
-      const fromTimestamp = Math.floor(parseDate(dateFrom) / 1000);
-      conditions.push(gte(supplierInvoices.invoiceDate, fromTimestamp));
+      conditions.push(gte(supplierInvoices.invoiceDate, parseDate(dateFrom)));
     }
     if (dateTo) {
-      const toTimestamp = Math.floor(parseDate(dateTo) / 1000);
-      conditions.push(lte(supplierInvoices.invoiceDate, toTimestamp));
+      conditions.push(lte(supplierInvoices.invoiceDate, parseDate(dateTo)));
     }
 
     if (conditions.length > 0) {
@@ -66,18 +62,9 @@ export const getAll = async (req: TenantRequest, res: Response) => {
                      supplierInvoices.invoiceDate;
     query = query.orderBy(sortOrder === 'asc' ? asc(orderCol) : desc(orderCol)) as any;
 
-    const invoices = query.all();
+    const invoices = await query;
 
-    // Convertir timestamps a Date objects para el frontend
-    const invoicesFormatted = invoices.map(inv => ({
-      ...inv,
-      invoiceDate: new Date(inv.invoiceDate * 1000),
-      dueDate: inv.dueDate ? new Date(inv.dueDate * 1000) : null,
-      createdAt: inv.createdAt ?? new Date(),
-      updatedAt: inv.updatedAt ?? null,
-    }));
-
-    res.json(invoicesFormatted);
+    res.json(invoices);
   } catch (error) {
     console.error("[supplierInvoices.getAll]", error);
     res.status(500).json({ message: "Error fetching invoices" });
@@ -90,43 +77,33 @@ export const getById = async (req: Request, res: Response) => {
     const { id } = req.params;
     const invoiceId = parseInt(String(id));
 
-    const invoice = db
+    const [invoice] = await db
       .select()
       .from(supplierInvoices)
       .where(eq(supplierInvoices.id, invoiceId))
-      .get();
+      .limit(1);
 
     if (!invoice) {
       return res.status(404).json({ message: "Invoice not found" });
     }
 
     // Obtener items
-    const items = db
+    const items = await db
       .select()
       .from(supplierInvoiceItems)
-      .where(eq(supplierInvoiceItems.invoiceId, invoiceId))
-      .all();
+      .where(eq(supplierInvoiceItems.invoiceId, invoiceId));
 
     // Obtener pagos
-    const payments = db
+    const payments = await db
       .select()
       .from(supplierInvoicePayments)
       .where(eq(supplierInvoicePayments.invoiceId, invoiceId))
-      .orderBy(desc(supplierInvoicePayments.paymentDate))
-      .all();
+      .orderBy(desc(supplierInvoicePayments.paymentDate));
 
     res.json({
       ...invoice,
-      invoiceDate: new Date(invoice.invoiceDate * 1000),
-      dueDate: invoice.dueDate ? new Date(invoice.dueDate * 1000) : null,
-      createdAt: invoice.createdAt ?? new Date(),
-      updatedAt: invoice.updatedAt ?? null,
       items,
-      payments: payments.map(p => ({
-        ...p,
-        paymentDate: new Date(p.paymentDate * 1000),
-        createdAt: p.createdAt ?? new Date(),
-      })),
+      payments,
     });
   } catch (error) {
     console.error("[supplierInvoices.getById]", error);
@@ -166,14 +143,14 @@ export const create = async (req: TenantRequest, res: Response) => {
     }
 
     // Verificar si ya existe la factura
-    const existing = db
+    const [existing] = await db
       .select()
       .from(supplierInvoices)
       .where(and(
         eq(supplierInvoices.invoiceNumber, invoiceNumber),
         eq(supplierInvoices.supplierName, supplierName)
       ))
-      .get();
+      .limit(1);
 
     if (existing) {
       return res.status(409).json({ 
@@ -181,8 +158,8 @@ export const create = async (req: TenantRequest, res: Response) => {
       });
     }
 
-    const invoiceDateTs = Math.floor(parseDate(invoiceDate) / 1000);
-    const dueDateTs = dueDate ? Math.floor(parseDate(dueDate) / 1000) : null;
+    const invoiceDateTs = parseDate(invoiceDate);
+    const dueDateTs = dueDate ? parseDate(dueDate) : null;
 
     // Calcular totales
     const calculatedSubtotal = subtotal || 0;
@@ -190,7 +167,7 @@ export const create = async (req: TenantRequest, res: Response) => {
     const calculatedTotal = total || (calculatedSubtotal + calculatedTax);
 
     // Crear factura
-    const newInvoice = db
+    const [insertResult] = await db
       .insert(supplierInvoices)
       .values({
         invoiceNumber,
@@ -208,13 +185,13 @@ export const create = async (req: TenantRequest, res: Response) => {
         description,
         notes,
         registeredBy: userId,
-      } as InsertInvoice)
-      .returning().get();
+      } as InsertInvoice);
+    const [newInvoice] = await db.select().from(supplierInvoices).where(eq(supplierInvoices.id, insertResult.insertId)).limit(1);
 
     // Crear items si existen
     if (items && items.length > 0) {
       for (const item of items) {
-        db.insert(supplierInvoiceItems).values({
+        await db.insert(supplierInvoiceItems).values({
           invoiceId: newInvoice.id,
           productId: item.productId || null,
           description: item.description,
@@ -222,7 +199,7 @@ export const create = async (req: TenantRequest, res: Response) => {
           unitPrice: item.unitPrice,
           subtotal: item.quantity * item.unitPrice,
           taxRate: item.taxRate || 19,
-        } as InsertInvoiceItem).run();
+        } as InsertInvoiceItem);
       }
     }
 
@@ -230,22 +207,16 @@ export const create = async (req: TenantRequest, res: Response) => {
     if (expenseCategory === 'inventory' && items.length > 0) {
       for (const item of items) {
         if (item.productId) {
-          db.update(products)
+          await db.update(products)
             .set({ 
               stock: sql`${products.stock} + ${item.quantity}` 
             })
-            .where(eq(products.id, item.productId))
-            .run();
+            .where(eq(products.id, item.productId));
         }
       }
     }
 
-    res.status(201).json({
-      ...newInvoice,
-      invoiceDate: new Date(newInvoice.invoiceDate * 1000),
-      dueDate: newInvoice.dueDate ? new Date(newInvoice.dueDate * 1000) : null,
-      createdAt: newInvoice.createdAt ?? new Date(),
-    });
+    res.status(201).json(newInvoice);
   } catch (error: any) {
     console.error("[supplierInvoices.create]", error);
     res.status(500).json({ message: "Error creating invoice" });
@@ -258,11 +229,11 @@ export const update = async (req: TenantRequest, res: Response) => {
     const { id } = req.params;
     const invoiceId = parseInt(String(id));
 
-    const existing = db
+    const [existing] = await db
       .select()
       .from(supplierInvoices)
       .where(eq(supplierInvoices.id, invoiceId))
-      .get();
+      .limit(1);
 
     if (!existing) {
       return res.status(404).json({ message: "Invoice not found" });
@@ -286,8 +257,8 @@ export const update = async (req: TenantRequest, res: Response) => {
     const updateData: any = {};
     if (invoiceNumber !== undefined) updateData.invoiceNumber = invoiceNumber;
     if (supplierName !== undefined) updateData.supplierName = supplierName;
-    if (invoiceDate !== undefined) updateData.invoiceDate = Math.floor(parseDate(invoiceDate) / 1000);
-    if (dueDate !== undefined) updateData.dueDate = dueDate ? Math.floor(parseDate(dueDate) / 1000) : null;
+    if (invoiceDate !== undefined) updateData.invoiceDate = parseDate(invoiceDate);
+    if (dueDate !== undefined) updateData.dueDate = dueDate ? parseDate(dueDate) : null;
     if (subtotal !== undefined) updateData.subtotal = subtotal;
     if (taxAmount !== undefined) updateData.taxAmount = taxAmount;
     if (total !== undefined) {
@@ -298,25 +269,18 @@ export const update = async (req: TenantRequest, res: Response) => {
     if (accountingCode !== undefined) updateData.accountingCode = accountingCode;
     if (description !== undefined) updateData.description = description;
     if (notes !== undefined) updateData.notes = notes;
-    updateData.updatedAt = Math.floor(Date.now() / 1000);
+    updateData.updatedAt = new Date();
 
-    db.update(supplierInvoices)
+    await db.update(supplierInvoices)
       .set(updateData)
-      .where(eq(supplierInvoices.id, invoiceId))
-      .run();
-    const updated = db.select().from(supplierInvoices).where(eq(supplierInvoices.id, invoiceId)).get();
+      .where(eq(supplierInvoices.id, invoiceId));
+    const [updated] = await db.select().from(supplierInvoices).where(eq(supplierInvoices.id, invoiceId)).limit(1);
 
     if (!updated) {
       return res.status(404).json({ message: "Invoice not found after update" });
     }
 
-    res.json({
-      ...updated,
-      invoiceDate: new Date(updated.invoiceDate * 1000),
-      dueDate: updated.dueDate ? new Date(updated.dueDate * 1000) : null,
-      createdAt: updated.createdAt ?? new Date(),
-      updatedAt: updated.updatedAt ?? null,
-    });
+    res.json(updated);
   } catch (error) {
     console.error("[supplierInvoices.update]", error);
     res.status(500).json({ message: "Error updating invoice" });
@@ -329,11 +293,11 @@ export const deleteInvoice = async (req: Request, res: Response) => {
     const { id } = req.params;
     const invoiceId = parseInt(String(id));
 
-    const existing = db
+    const [existing] = await db
       .select()
       .from(supplierInvoices)
       .where(eq(supplierInvoices.id, invoiceId))
-      .get();
+      .limit(1);
 
     if (!existing) {
       return res.status(404).json({ message: "Invoice not found" });
@@ -346,9 +310,8 @@ export const deleteInvoice = async (req: Request, res: Response) => {
       });
     }
 
-    db.delete(supplierInvoices)
-      .where(eq(supplierInvoices.id, invoiceId))
-      .run();
+    await db.delete(supplierInvoices)
+      .where(eq(supplierInvoices.id, invoiceId));
 
     res.json({ message: "Invoice deleted successfully" });
   } catch (error) {
@@ -376,11 +339,11 @@ export const registerPayment = async (req: TenantRequest, res: Response) => {
       });
     }
 
-    const invoice = db
+    const [invoice] = await db
       .select()
       .from(supplierInvoices)
       .where(eq(supplierInvoices.id, invoiceId))
-      .get();
+      .limit(1);
 
     if (!invoice) {
       return res.status(404).json({ message: "Invoice not found" });
@@ -400,10 +363,10 @@ export const registerPayment = async (req: TenantRequest, res: Response) => {
       });
     }
 
-    const paymentDateTs = paymentDate ? Math.floor(parseDate(paymentDate) / 1000) : Math.floor(Date.now() / 1000);
+    const paymentDateTs = paymentDate ? parseDate(paymentDate) : new Date();
 
     // Registrar pago
-    const payment = db
+    const [paymentInsertResult] = await db
       .insert(supplierInvoicePayments)
       .values({
         invoiceId,
@@ -413,8 +376,8 @@ export const registerPayment = async (req: TenantRequest, res: Response) => {
         reference,
         notes,
         registeredBy: userId,
-      } as InsertInvoicePayment)
-      .returning().get();
+      } as InsertInvoicePayment);
+    const [payment] = await db.select().from(supplierInvoicePayments).where(eq(supplierInvoicePayments.id, paymentInsertResult.insertId)).limit(1);
 
     // Actualizar estado de la factura
     const newAmountPaid = invoice.amountPaid + amount;
@@ -422,20 +385,15 @@ export const registerPayment = async (req: TenantRequest, res: Response) => {
     const newStatus = newAmountPending <= 0 ? 'paid' : 
                       newAmountPaid > 0 ? 'partial' : 'pending';
 
-    db.update(supplierInvoices)
+    await db.update(supplierInvoices)
       .set({
         amountPaid: newAmountPaid,
         paymentStatus: newStatus,
-        updatedAt: Math.floor(Date.now() / 1000),
+        updatedAt: new Date(),
       })
-      .where(eq(supplierInvoices.id, invoiceId))
-      .run();
+      .where(eq(supplierInvoices.id, invoiceId));
 
-    res.status(201).json({
-      ...payment,
-      paymentDate: new Date(payment.paymentDate * 1000),
-      createdAt: payment.createdAt ?? new Date(),
-    });
+    res.status(201).json(payment);
   } catch (error) {
     console.error("[supplierInvoices.registerPayment]", error);
     res.status(500).json({ message: "Error registering payment" });
@@ -449,12 +407,10 @@ export const getStats = async (req: Request, res: Response) => {
 
     const conditions = [];
     if (dateFrom) {
-      const fromTs = Math.floor(parseDate(dateFrom) / 1000);
-      conditions.push(gte(supplierInvoices.invoiceDate, fromTs));
+      conditions.push(gte(supplierInvoices.invoiceDate, parseDate(dateFrom)));
     }
     if (dateTo) {
-      const toTs = Math.floor(parseDate(dateTo) / 1000);
-      conditions.push(lte(supplierInvoices.invoiceDate, toTs));
+      conditions.push(lte(supplierInvoices.invoiceDate, parseDate(dateTo)));
     }
 
     let query = db.select().from(supplierInvoices);
@@ -462,11 +418,11 @@ export const getStats = async (req: Request, res: Response) => {
       query = query.where(and(...conditions)) as any;
     }
 
-    const allInvoices = query.all();
+    const allInvoices = await query;
 
     // Calcular estadísticas
-    const now = Math.floor(Date.now() / 1000);
-    const next7Days = now + (7 * 24 * 60 * 60);
+    const now = new Date();
+    const next7Days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     const stats = {
       totalPending: 0,

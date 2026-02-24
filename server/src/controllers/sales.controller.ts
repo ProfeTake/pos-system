@@ -6,24 +6,22 @@ import { logAuditAction, AuditActions } from "../middlewares/audit.middleware";
 
 export const getAll = async (req: Request, res: Response) => {
   try {
-    const allSales = db
+    const allSales = await db
       .select()
       .from(sales)
-      .orderBy(desc(sales.createdAt))
-      .all();
+      .orderBy(desc(sales.createdAt));
 
     // Fetch items for each sale
-    const salesWithItems = allSales.map((sale) => {
-      const items = db
+    const salesWithItems = await Promise.all(allSales.map(async (sale) => {
+      const items = await db
         .select()
         .from(saleItems)
-        .where(eq(saleItems.saleId, sale.id))
-        .all();
+        .where(eq(saleItems.saleId, sale.id));
       return {
         ...sale,
         items,
       };
-    });
+    }));
 
     res.json(salesWithItems);
   } catch (error) {
@@ -40,21 +38,20 @@ export const getById = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
 
-    const sale = db
+    const [sale] = await db
       .select()
       .from(sales)
       .where(eq(sales.id, parseInt(id)))
-      .get();
+      .limit(1);
 
     if (!sale) {
       return res.status(404).json({ message: "Venta no encontrada" });
     }
 
-    const items = db
+    const items = await db
       .select()
       .from(saleItems)
-      .where(eq(saleItems.saleId, sale.id))
-      .all();
+      .where(eq(saleItems.saleId, sale.id));
 
     res.json({ ...sale, items });
   } catch (error) {
@@ -67,18 +64,18 @@ export const create = async (req: Request, res: Response) => {
   const { items, paymentMethod, total, customerName } = req.body;
 
   try {
-    const result = db.transaction((tx) => {
+    const result = await db.transaction(async (tx) => {
       // Asegurar que existe un producto "Venta Variada" para items sin producto
-      const miscRow = tx
+      const [miscRow] = await tx
         .select({ id: products.id })
         .from(products)
         .where(eq(products.name, "Venta Variada"))
-        .get();
+        .limit(1);
       let miscProductId = miscRow?.id;
 
       if (!miscProductId) {
         // Crear producto especial para ventas variadas
-        const newMiscProduct = tx
+        const [insertResult] = await tx
           .insert(products)
           .values({
             name: "Venta Variada",
@@ -88,10 +85,8 @@ export const create = async (req: Request, res: Response) => {
             price: 0,
             cost: 0,
             estado: "NORMAL",
-          })
-          .returning()
-          .get();
-        miscProductId = newMiscProduct.id;
+          });
+        miscProductId = insertResult.insertId;
       }
 
       // Validar stocks antes de crear la venta para evitar negativos.
@@ -100,11 +95,11 @@ export const create = async (req: Request, res: Response) => {
         // Saltar validación para items variados
         if (item.id === 0) continue;
         
-        const currentProduct = tx
+        const [currentProduct] = await tx
           .select()
           .from(products)
           .where(eq(products.id, item.id))
-          .get();
+          .limit(1);
         if (!currentProduct) {
           throw new Error(`Producto no encontrado (id=${item.id})`);
         }
@@ -116,38 +111,40 @@ export const create = async (req: Request, res: Response) => {
       }
       
       // Create sale
-      const newSale = tx
+      const [saleInsertResult] = await tx
         .insert(sales)
         .values({
           total,
           paymentMethod,
           customerName,
-        })
-        .returning()
-        .get();
+        });
+      const [newSale] = await tx
+        .select()
+        .from(sales)
+        .where(eq(sales.id, saleInsertResult.insertId))
+        .limit(1);
 
       // Create items and update stock
       for (const item of items) {
         const productIdToUse = item.id === 0 ? miscProductId : item.id;
         
-        tx.insert(saleItems).values({
+        await tx.insert(saleItems).values({
           saleId: newSale.id,
           productId: productIdToUse,
           productName: item.name,
           quantity: item.quantity,
           price: item.price,
           subtotal: item.price * item.quantity,
-        }).run();
+        });
 
         // Update stock solo para productos normales (no variados)
         if (item.id !== 0) {
-          tx
+          await tx
             .update(products)
             .set({
               stock: sql`${products.stock} - ${item.quantity}`,
             })
-            .where(eq(products.id, item.id))
-            .run();
+            .where(eq(products.id, item.id));
         }
       }
 
@@ -187,11 +184,11 @@ export const voidSale = async (req: Request, res: Response) => {
   const userId = (req as any).user?.id;
 
   try {
-    const sale = db
+    const [sale] = await db
       .select()
       .from(sales)
       .where(eq(sales.id, parseInt(id)))
-      .get();
+      .limit(1);
 
     if (!sale) {
       return res.status(404).json({ message: "Venta no encontrada" });
@@ -203,7 +200,7 @@ export const voidSale = async (req: Request, res: Response) => {
       });
     }
 
-    const updated = db
+    await db
       .update(sales)
       .set({
         status: "voided",
@@ -211,9 +208,13 @@ export const voidSale = async (req: Request, res: Response) => {
         voidedBy: userId,
         voidReason: reason || "Anulada por usuario",
       })
+      .where(eq(sales.id, parseInt(id)));
+
+    const [updated] = await db
+      .select()
+      .from(sales)
       .where(eq(sales.id, parseInt(id)))
-      .returning()
-      .get();
+      .limit(1);
 
     // Registrar auditoría
     await logAuditAction(req, {
@@ -246,12 +247,12 @@ export const refundSale = async (req: Request, res: Response) => {
   const userId = (req as any).user?.id;
 
   try {
-    const result = db.transaction((tx) => {
-      const sale = tx
+    const result = await db.transaction(async (tx) => {
+      const [sale] = await tx
         .select()
         .from(sales)
         .where(eq(sales.id, parseInt(id)))
-        .get();
+        .limit(1);
 
       if (!sale) {
         throw new Error("Venta no encontrada");
@@ -264,11 +265,10 @@ export const refundSale = async (req: Request, res: Response) => {
       }
 
       // Obtener items de la venta
-      const saleItemsList = tx
+      const saleItemsList = await tx
         .select()
         .from(saleItems)
-        .where(eq(saleItems.saleId, sale.id))
-        .all();
+        .where(eq(saleItems.saleId, sale.id));
 
       // Si se especifican items, devolver solo esos; sino, todos
       const itemsToProcess = itemsToRefund
@@ -284,13 +284,12 @@ export const refundSale = async (req: Request, res: Response) => {
               ?.quantity || item.quantity
           : item.quantity;
 
-        tx
+        await tx
           .update(products)
           .set({
             stock: sql`${products.stock} + ${refundQty}`,
           })
-          .where(eq(products.id, item.productId))
-          .run();
+          .where(eq(products.id, item.productId));
       }
 
       // Calcular monto devuelto
@@ -305,7 +304,7 @@ export const refundSale = async (req: Request, res: Response) => {
       }
 
       // Marcar venta como devuelta
-      const updated = tx
+      await tx
         .update(sales)
         .set({
           status: "refunded",
@@ -313,9 +312,13 @@ export const refundSale = async (req: Request, res: Response) => {
           voidedBy: userId,
           voidReason: reason || "Devolución completa",
         })
+        .where(eq(sales.id, parseInt(id)));
+
+      const [updated] = await tx
+        .select()
+        .from(sales)
         .where(eq(sales.id, parseInt(id)))
-        .returning()
-        .get();
+        .limit(1);
 
       return {
         sale: updated,
@@ -354,15 +357,13 @@ export const getMetrics = async (req: Request, res: Response) => {
   const { period } = req.query;
   // Simplified implementation
   try {
-    const totalSales = db
+    const [totalSales] = await db
       .select({ count: sql<number>`count(*)` })
-      .from(sales)
-      .get();
+      .from(sales);
 
-    const revenue = db
+    const [revenue] = await db
       .select({ total: sql<number>`sum(${sales.total})` })
-      .from(sales)
-      .get();
+      .from(sales);
 
     res.json({
       totalRevenue: revenue?.total || 0,
@@ -377,28 +378,27 @@ export const getMetrics = async (req: Request, res: Response) => {
 export const getSalesTrend = async (req: Request, res: Response) => {
   try {
     const days = parseInt(req.query.days as string) || 30;
-    const now = Math.floor(Date.now() / 1000);
-    const startTime = now - days * 24 * 60 * 60;
+    const now = new Date();
+    const startDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
 
-    // Get daily aggregated sales using raw column name for SQLite date functions
-    const dailySales = db
+    // Get daily aggregated sales using MySQL date functions
+    const dailySales = await db
       .select({
-        date: sql<string>`date(created_at, 'unixepoch')`,
+        date: sql<string>`DATE(created_at)`,
         salesCount: sql<number>`count(*)`,
         revenue: sql<number>`coalesce(sum(${sales.total}), 0)`,
       })
       .from(sales)
-      .where(sql`created_at >= ${startTime} AND ${sales.status} = 'completed'`)
-      .groupBy(sql`date(created_at, 'unixepoch')`)
-      .orderBy(sql`date(created_at, 'unixepoch')`)
-      .all();
+      .where(sql`created_at >= ${startDate} AND ${sales.status} = 'completed'`)
+      .groupBy(sql`DATE(created_at)`)
+      .orderBy(sql`DATE(created_at)`);
 
     // Fill in missing days with zeros
     const trend: Array<{ date: string; salesCount: number; revenue: number; avgTicket: number }> = [];
     const salesMap = new Map(dailySales.map(d => [d.date, d]));
 
     for (let i = days - 1; i >= 0; i--) {
-      const date = new Date((now - i * 24 * 60 * 60) * 1000);
+      const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
       const dateStr = date.toISOString().split('T')[0];
       const dayData = salesMap.get(dateStr);
       
@@ -420,38 +420,37 @@ export const getSalesTrend = async (req: Request, res: Response) => {
 export const getSalesByHour = async (req: Request, res: Response) => {
   try {
     const period = (req.query.period as string) || 'today';
-    const now = Math.floor(Date.now() / 1000);
+    const now = new Date();
     
     // Calculate start time based on period
-    let startTime: number;
+    let startDate: Date;
     switch (period) {
       case 'today':
-        startTime = now - 24 * 60 * 60;
+        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
         break;
       case 'week':
-        startTime = now - 7 * 24 * 60 * 60;
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         break;
       case 'month':
-        startTime = now - 30 * 24 * 60 * 60;
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
         break;
       case 'year':
-        startTime = now - 365 * 24 * 60 * 60;
+        startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
         break;
       default:
-        startTime = now - 24 * 60 * 60;
+        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     }
 
-    // Get hourly aggregated sales using raw column name
-    const hourlySales = db
+    // Get hourly aggregated sales using MySQL date functions
+    const hourlySales = await db
       .select({
-        hour: sql<number>`cast(strftime('%H', created_at, 'unixepoch') as integer)`,
+        hour: sql<number>`HOUR(created_at)`,
         salesCount: sql<number>`count(*)`,
         revenue: sql<number>`coalesce(sum(${sales.total}), 0)`,
       })
       .from(sales)
-      .where(sql`created_at >= ${startTime} AND ${sales.status} = 'completed'`)
-      .groupBy(sql`cast(strftime('%H', created_at, 'unixepoch') as integer)`)
-      .all();
+      .where(sql`created_at >= ${startDate} AND ${sales.status} = 'completed'`)
+      .groupBy(sql`HOUR(created_at)`);
 
     // Fill in all 24 hours with zeros for missing hours
     const hourlyStats: Array<{ hour: number; salesCount: number; revenue: number }> = [];

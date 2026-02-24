@@ -5,7 +5,7 @@ import { eq, desc } from "drizzle-orm";
 
 export const getSettings = async (req: Request, res: Response) => {
     try {
-        const allSettings = db.select().from(settings).all();
+        const allSettings = await db.select().from(settings);
         // Transform to object
         const settingsObj = allSettings.reduce((acc: any, curr) => {
             acc[curr.key] = curr.value;
@@ -21,14 +21,12 @@ export const updateSetting = async (req: Request, res: Response) => {
     const key = String(req.params.key);
     const { value } = req.body;
     try {
-        db
+        await db
             .insert(settings)
             .values({ key, value })
-            .onConflictDoUpdate({
-                target: settings.key,
+            .onDuplicateKeyUpdate({
                 set: { value, updatedAt: new Date() },
-            })
-            .run();
+            });
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ message: "Error updating setting" });
@@ -37,10 +35,10 @@ export const updateSetting = async (req: Request, res: Response) => {
 
 export const getCashSession = async (req: Request, res: Response) => {
     try {
-        const session = db.query.cashSessions.findFirst({
+        const session = await db.query.cashSessions.findFirst({
             where: (sessions, { isNull }) => isNull(sessions.closeTime),
             orderBy: [desc(cashSessions.openTime)],
-        }).sync();
+        });
         res.json(session || null);
     } catch (error) {
         res.status(500).json({ message: "Error fetching cash session" });
@@ -52,17 +50,17 @@ export const recalculateWindow = async (req: Request, res: Response) => {
         const mode = req.query.mode || "current"; // "current" o "next"
         
         // Buscar sesión activa (sin closeTime)
-        const activeSession = db.query.cashSessions.findFirst({
+        const activeSession = await db.query.cashSessions.findFirst({
             where: (sessions, { isNull }) => isNull(sessions.closeTime),
             orderBy: [desc(cashSessions.openTime)],
-        }).sync();
+        });
 
         if (!activeSession) {
             return res.status(404).json({ message: "No hay sesión de caja activa" });
         }
 
         // Obtener configuración de horarios
-        const settingsResult = db.select().from(settings).all();
+        const settingsResult = await db.select().from(settings);
         const settingsMap = settingsResult.reduce((acc: any, curr) => {
             acc[curr.key] = curr.value;
             return acc;
@@ -108,16 +106,15 @@ export const recalculateWindow = async (req: Request, res: Response) => {
         }
 
         // Actualizar la sesión con la nueva ventana de cierre
-        db
+        await db
             .update(cashSessions)
             .set({ windowClose: newWindowClose })
-            .where(eq(cashSessions.id, activeSession.id))
-            .run();
+            .where(eq(cashSessions.id, activeSession.id));
 
         // Obtener la sesión actualizada
-        const updatedSession = db.query.cashSessions.findFirst({
+        const updatedSession = await db.query.cashSessions.findFirst({
             where: eq(cashSessions.id, activeSession.id),
-        }).sync();
+        });
 
         res.json({ 
             success: true, 
@@ -137,13 +134,13 @@ export const recalculateWindow = async (req: Request, res: Response) => {
 export const checkShiftChange = async (req: Request, res: Response) => {
     try {
         // Buscar sesión activa (sin closeTime)
-        const activeSession = db.query.cashSessions.findFirst({
+        const activeSession = await db.query.cashSessions.findFirst({
             where: (sessions, { isNull }) => isNull(sessions.closeTime),
             orderBy: [desc(cashSessions.openTime)],
-        }).sync();
+        });
 
         // Obtener configuración de horarios
-        const settingsResult = db.select().from(settings).all();
+        const settingsResult = await db.select().from(settings);
         const settingsMap = settingsResult.reduce((acc: any, curr) => {
             acc[curr.key] = curr.value;
             return acc;

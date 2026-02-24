@@ -5,13 +5,12 @@ import { eq, isNull, desc, and, sql, gte, lte } from "drizzle-orm";
 
 export const getCurrent = async (req: Request, res: Response) => {
   try {
-    const session = db
+    const [session] = await db
       .select()
       .from(cashSessions)
       .where(isNull(cashSessions.closeTime))
       .orderBy(desc(cashSessions.openTime))
-      .limit(1)
-      .get();
+      .limit(1);
 
     res.json(session || null);
   } catch (error) {
@@ -41,12 +40,11 @@ export const openSession = async (req: Request, res: Response) => {
 
   try {
     // Verificar si ya hay una sesión abierta
-    const existingOpen = db
+    const [existingOpen] = await db
       .select()
       .from(cashSessions)
       .where(isNull(cashSessions.closeTime))
-      .limit(1)
-      .get();
+      .limit(1);
 
     if (existingOpen) {
       // Ya hay sesión abierta, devolver esa
@@ -54,12 +52,11 @@ export const openSession = async (req: Request, res: Response) => {
     }
 
     // Obtener la última sesión cerrada para detectar si es nuevo turno
-    const lastClosedSession = db
+    const [lastClosedSession] = await db
       .select()
       .from(cashSessions)
       .orderBy(desc(cashSessions.closeTime))
-      .limit(1)
-      .get();
+      .limit(1);
 
     // Detectar si es un nuevo turno comparando ventanas operacionales
     let isNewShift = true;
@@ -69,15 +66,20 @@ export const openSession = async (req: Request, res: Response) => {
       isNewShift = lastWindowOpen !== currentWindowOpen;
     }
 
-    const newSession = db
+    const [insertResult] = await db
       .insert(cashSessions)
       .values({
         openTime: new Date(),
         initialCash: Number(amount),
         windowOpen: windowOpen ? new Date(windowOpen) : undefined,
         windowClose: windowClose ? new Date(windowClose) : undefined,
-      })
-      .returning().get();
+      });
+
+    const [newSession] = await db
+      .select()
+      .from(cashSessions)
+      .where(eq(cashSessions.id, insertResult.insertId))
+      .limit(1);
 
     res.status(201).json({ ...newSession, isNewShift });
   } catch (error) {
@@ -94,7 +96,7 @@ export const closeSession = async (req: Request, res: Response) => {
 
   try {
     const difference = declaredCash - finalCash;
-    db.update(cashSessions)
+    await db.update(cashSessions)
       .set({
         closeTime: new Date(),
         finalCash,
@@ -102,14 +104,13 @@ export const closeSession = async (req: Request, res: Response) => {
         difference,
         notes,
       })
-      .where(eq(cashSessions.id, Number(id)))
-      .run();
+      .where(eq(cashSessions.id, Number(id)));
 
-    const updated = db
+    const [updated] = await db
       .select()
       .from(cashSessions)
       .where(eq(cashSessions.id, Number(id)))
-      .get();
+      .limit(1);
 
     res.json(updated);
   } catch (error) {
@@ -124,13 +125,12 @@ export const closeCurrentSession = async (req: Request, res: Response) => {
 
   try {
     // Buscar sesión abierta
-    const openSession = db
+    const [openSession] = await db
       .select()
       .from(cashSessions)
       .where(isNull(cashSessions.closeTime))
       .orderBy(desc(cashSessions.openTime))
-      .limit(1)
-      .get();
+      .limit(1);
 
     if (!openSession) {
       return res.status(404).json({ message: "No hay sesión abierta" });
@@ -141,7 +141,7 @@ export const closeCurrentSession = async (req: Request, res: Response) => {
     const declared = declaredCash ?? closingAmount ?? 0;
     const difference = declared - final;
 
-    db.update(cashSessions)
+    await db.update(cashSessions)
       .set({
         closeTime: new Date(),
         finalCash: final,
@@ -149,14 +149,13 @@ export const closeCurrentSession = async (req: Request, res: Response) => {
         difference,
         notes,
       })
-      .where(eq(cashSessions.id, sessionId))
-      .run();
+      .where(eq(cashSessions.id, sessionId));
 
-    const updated = db
+    const [updated] = await db
       .select()
       .from(cashSessions)
       .where(eq(cashSessions.id, sessionId))
-      .get();
+      .limit(1);
 
     res.json(updated);
   } catch (error) {
@@ -168,13 +167,12 @@ export const closeCurrentSession = async (req: Request, res: Response) => {
 // Get session summary
 export const getSummary = async (req: Request, res: Response) => {
   try {
-    const session = db
+    const [session] = await db
       .select()
       .from(cashSessions)
       .where(isNull(cashSessions.closeTime))
       .orderBy(desc(cashSessions.openTime))
-      .limit(1)
-      .get();
+      .limit(1);
 
     if (!session) {
       return res.json({ open: false });
@@ -196,13 +194,12 @@ export const getSummary = async (req: Request, res: Response) => {
 // Get balance
 export const getBalance = async (req: Request, res: Response) => {
   try {
-    const s = db
+    const [s] = await db
       .select()
       .from(cashSessions)
       .where(isNull(cashSessions.closeTime))
       .orderBy(desc(cashSessions.openTime))
-      .limit(1)
-      .get();
+      .limit(1);
 
     if (!s) {
       return res.json({ open: false, balance: 0 });
@@ -215,7 +212,7 @@ export const getBalance = async (req: Request, res: Response) => {
     const nowTs = Math.floor(Date.now() / 1000);
 
     // Ventas en efectivo dentro de la ventana de la sesión
-    const efectivoRow = db
+    const [efectivoRow] = await db
       .select({ total: sql<number>`COALESCE(sum(${sales.total}),0)` })
       .from(sales)
       .where(
@@ -224,13 +221,12 @@ export const getBalance = async (req: Request, res: Response) => {
           sql`${sales.createdAt} >= ${sessionStartTs}`,
           sql`${sales.createdAt} <= ${nowTs}`
         )
-      )
-      .get();
+      );
 
     const efectivoVentas = efectivoRow?.total || 0;
 
     // Movimientos de caja (ingresos / egresos) asociados a la sesión
-    const ingresosRow = db
+    const [ingresosRow] = await db
       .select({ total: sql<number>`COALESCE(sum(${cashMovements.amount}),0)` })
       .from(cashMovements)
       .where(
@@ -238,15 +234,13 @@ export const getBalance = async (req: Request, res: Response) => {
           eq(cashMovements.sessionId, s.id),
           eq(cashMovements.type, "INGRESO")
         )
-      )
-      .get();
-    const egresosRow = db
+      );
+    const [egresosRow] = await db
       .select({ total: sql<number>`COALESCE(sum(${cashMovements.amount}),0)` })
       .from(cashMovements)
       .where(
         and(eq(cashMovements.sessionId, s.id), eq(cashMovements.type, "EGRESO"))
-      )
-      .get();
+      );
 
     const ingresos = ingresosRow?.total || 0;
     const egresos = egresosRow?.total || 0;

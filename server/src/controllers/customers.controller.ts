@@ -31,8 +31,8 @@ export async function getCustomers(req: Request, res: Response) {
     }
 
     const allCustomers = whereConditions.length > 0
-      ? db.select().from(customers).where(and(...whereConditions)).orderBy(desc(customers.createdAt)).all()
-      : db.select().from(customers).orderBy(desc(customers.createdAt)).all();
+      ? await db.select().from(customers).where(and(...whereConditions)).orderBy(desc(customers.createdAt))
+      : await db.select().from(customers).orderBy(desc(customers.createdAt));
 
     return res.json(allCustomers);
   } catch (error) {
@@ -49,32 +49,30 @@ export async function getCustomerById(req: Request, res: Response) {
   try {
     const id = req.params.id as string;
 
-    const customer = db
+    const [customer] = await db
       .select()
       .from(customers)
       .where(eq(customers.id, id))
-      .get();
+      .limit(1);
 
     if (!customer) {
       return res.status(404).json({ error: 'Cliente no encontrado' });
     }
 
     // Get customer debts
-    const debts = db
+    const debts = await db
       .select()
       .from(customerDebts)
       .where(eq(customerDebts.customerId, id))
-      .orderBy(desc(customerDebts.createdAt))
-      .all();
+      .orderBy(desc(customerDebts.createdAt));
 
     // Get purchase history
-    const purchaseHistory = db
+    const purchaseHistory = await db
       .select()
       .from(sales)
       .where(eq(sales.customerId, id))
       .orderBy(desc(sales.createdAt))
-      .limit(10)
-      .all();
+      .limit(10);
 
     return res.json({
       ...customer,
@@ -110,37 +108,39 @@ export async function createCustomer(req: Request, res: Response) {
 
     // Check if RUT already exists (if provided)
     if (rut) {
-      const existing = db
+      const [existing] = await db
         .select()
         .from(customers)
         .where(eq(customers.rut, rut))
-        .get();
+        .limit(1);
 
       if (existing) {
         return res.status(400).json({ error: 'Ya existe un cliente con ese RUT' });
       }
     }
 
-    const now = Math.floor(Date.now() / 1000);
+    const newId = randomUUID();
 
-    const result = db.insert(customers).values({
-      id: randomUUID(),
+    await db.insert(customers).values({
+      id: newId,
       name,
       email: email || null,
       phone: phone || null,
       rut: rut || null,
       address: address || null,
-      creditLimit: creditLimit || 0,
-      creditUsed: 0,
+      creditLimit: String(creditLimit || 0),
+      creditUsed: "0",
       loyaltyPoints: 0,
-      totalPurchases: 0,
+      totalPurchases: "0",
       totalSales: 0,
       lastPurchase: null,
       notes: notes || null,
       active: 1,
-      createdAt: now,
-      updatedAt: now,
-    }).returning().get();
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const [result] = await db.select().from(customers).where(eq(customers.id, newId)).limit(1);
 
     return res.status(201).json(result);
   } catch (error) {
@@ -159,11 +159,11 @@ export async function updateCustomer(req: Request, res: Response) {
     const updates = req.body;
 
     // Check if customer exists
-    const existing = db
+    const [existing] = await db
       .select()
       .from(customers)
       .where(eq(customers.id, id))
-      .get();
+      .limit(1);
 
     if (!existing) {
       return res.status(404).json({ error: 'Cliente no encontrado' });
@@ -171,25 +171,22 @@ export async function updateCustomer(req: Request, res: Response) {
 
     // Check RUT uniqueness if updating
     if (updates.rut && updates.rut !== existing.rut) {
-      const rutExists = db
+      const [rutExists] = await db
         .select()
         .from(customers)
         .where(and(eq(customers.rut, updates.rut), sql`${customers.id} != ${id}`))
-        .get();
+        .limit(1);
 
       if (rutExists) {
         return res.status(400).json({ error: 'Ya existe un cliente con ese RUT' });
       }
     }
 
-    const now = Math.floor(Date.now() / 1000);
+    await db.update(customers)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(customers.id, id));
 
-    db.update(customers)
-      .set({ ...updates, updatedAt: now })
-      .where(eq(customers.id, id))
-      .run();
-
-    const result = db.select().from(customers).where(eq(customers.id, id)).get();
+    const [result] = await db.select().from(customers).where(eq(customers.id, id)).limit(1);
 
     return res.json(result);
   } catch (error) {
@@ -207,25 +204,24 @@ export async function deleteCustomer(req: Request, res: Response) {
     const id = req.params.id as string;
 
     // Check if exists
-    const existing = db
+    const [existing] = await db
       .select()
       .from(customers)
       .where(eq(customers.id, id))
-      .get();
+      .limit(1);
 
     if (!existing) {
       return res.status(404).json({ error: 'Cliente no encontrado' });
     }
 
     // Check for pending debts
-    const pendingDebts = db
+    const pendingDebts = await db
       .select()
       .from(customerDebts)
       .where(and(
         eq(customerDebts.customerId, id),
         eq(customerDebts.status, 'pending')
-      ))
-      .all();
+      ));
 
     if (pendingDebts.length > 0) {
       return res.status(400).json({ 
@@ -234,7 +230,7 @@ export async function deleteCustomer(req: Request, res: Response) {
       });
     }
 
-    db.delete(customers).where(eq(customers.id, id)).run();
+    await db.delete(customers).where(eq(customers.id, id));
 
     return res.json({ message: 'Cliente eliminado exitosamente' });
   } catch (error) {
@@ -251,25 +247,23 @@ export async function toggleCustomer(req: Request, res: Response) {
   try {
     const id = req.params.id as string;
 
-    const existing = db
+    const [existing] = await db
       .select()
       .from(customers)
       .where(eq(customers.id, id))
-      .get();
+      .limit(1);
 
     if (!existing) {
       return res.status(404).json({ error: 'Cliente no encontrado' });
     }
 
     const newStatus = existing.active ? 0 : 1;
-    const now = Math.floor(Date.now() / 1000);
 
-    db.update(customers)
-      .set({ active: newStatus, updatedAt: now })
-      .where(eq(customers.id, id))
-      .run();
+    await db.update(customers)
+      .set({ active: newStatus, updatedAt: new Date() })
+      .where(eq(customers.id, id));
 
-    const result = db.select().from(customers).where(eq(customers.id, id)).get();
+    const [result] = await db.select().from(customers).where(eq(customers.id, id)).limit(1);
 
     return res.json(result);
   } catch (error) {
@@ -291,32 +285,30 @@ export async function recordCustomerPurchase(req: Request, res: Response) {
       return res.status(400).json({ error: 'Monto inválido' });
     }
 
-    const existing = db
+    const [existing] = await db
       .select()
       .from(customers)
       .where(eq(customers.id, id))
-      .get();
+      .limit(1);
 
     if (!existing) {
       return res.status(404).json({ error: 'Cliente no encontrado' });
     }
 
     const customer = existing;
-    const now = Math.floor(Date.now() / 1000);
     const earnedPoints = points || Math.floor(amount / 1000); // 1 point per $1000
 
-    db.update(customers)
+    await db.update(customers)
       .set({
-        totalPurchases: customer.totalPurchases + amount,
+        totalPurchases: String(Number(customer.totalPurchases) + amount),
         totalSales: customer.totalSales + 1,
         loyaltyPoints: customer.loyaltyPoints + earnedPoints,
-        lastPurchase: now,
-        updatedAt: now,
+        lastPurchase: new Date(),
+        updatedAt: new Date(),
       })
-      .where(eq(customers.id, id))
-      .run();
+      .where(eq(customers.id, id));
 
-    const result = db.select().from(customers).where(eq(customers.id, id)).get();
+    const [result] = await db.select().from(customers).where(eq(customers.id, id)).limit(1);
 
     return res.json(result);
   } catch (error) {
@@ -340,12 +332,11 @@ export async function getCustomerDebts(req: Request, res: Response) {
       whereConditions.push(eq(customerDebts.status, status as string));
     }
 
-    const debts = db
+    const debts = await db
       .select()
       .from(customerDebts)
       .where(and(...whereConditions))
-      .orderBy(desc(customerDebts.createdAt))
-      .all();
+      .orderBy(desc(customerDebts.createdAt));
 
     return res.json(debts);
   } catch (error) {
@@ -368,17 +359,17 @@ export async function createCustomerDebt(req: Request, res: Response) {
     }
 
     // Check customer exists and has credit available
-    const customer = db
+    const [customer] = await db
       .select()
       .from(customers)
       .where(eq(customers.id, id))
-      .get();
+      .limit(1);
 
     if (!customer) {
       return res.status(404).json({ error: 'Cliente no encontrado' });
     }
 
-    const availableCredit = customer.creditLimit - customer.creditUsed;
+    const availableCredit = Number(customer.creditLimit) - Number(customer.creditUsed);
     if (amount > availableCredit) {
       return res.status(400).json({ 
         error: 'Monto excede el crédito disponible',
@@ -387,30 +378,31 @@ export async function createCustomerDebt(req: Request, res: Response) {
       });
     }
 
-    const now = Math.floor(Date.now() / 1000);
+    const debtId = randomUUID();
 
     // Create debt
-    const debt = db.insert(customerDebts).values({
-      id: randomUUID(),
+    await db.insert(customerDebts).values({
+      id: debtId,
       customerId: id,
       saleId: saleId || null,
-      amount,
-      amountPaid: 0,
-      dueDate: dueDate ? Math.floor(new Date(dueDate).getTime() / 1000) : null,
+      amount: String(amount),
+      amountPaid: "0",
+      dueDate: dueDate ? new Date(dueDate) : null,
       status: 'pending',
       notes: notes || null,
-      createdAt: now,
-      updatedAt: now,
-    }).returning().get();
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const [debt] = await db.select().from(customerDebts).where(eq(customerDebts.id, debtId)).limit(1);
 
     // Update customer credit used
-    db.update(customers)
+    await db.update(customers)
       .set({ 
-        creditUsed: customer.creditUsed + amount,
-        updatedAt: now
+        creditUsed: String(Number(customer.creditUsed) + amount),
+        updatedAt: new Date()
       })
-      .where(eq(customers.id, id))
-      .run();
+      .where(eq(customers.id, id));
 
     return res.status(201).json(debt);
   } catch (error) {
@@ -432,17 +424,17 @@ export async function recordDebtPayment(req: Request, res: Response) {
       return res.status(400).json({ error: 'Monto inválido' });
     }
 
-    const currentDebt = db
+    const [currentDebt] = await db
       .select()
       .from(customerDebts)
       .where(eq(customerDebts.id, debtId))
-      .get();
+      .limit(1);
 
     if (!currentDebt) {
       return res.status(404).json({ error: 'Deuda no encontrada' });
     }
 
-    const remaining = currentDebt.amount - currentDebt.amountPaid;
+    const remaining = Number(currentDebt.amount) - Number(currentDebt.amountPaid);
 
     if (amount > remaining) {
       return res.status(400).json({ 
@@ -451,38 +443,35 @@ export async function recordDebtPayment(req: Request, res: Response) {
       });
     }
 
-    const newAmountPaid = currentDebt.amountPaid + amount;
-    const newStatus = newAmountPaid >= currentDebt.amount ? 'paid' : 
+    const newAmountPaid = Number(currentDebt.amountPaid) + amount;
+    const newStatus = newAmountPaid >= Number(currentDebt.amount) ? 'paid' : 
                       newAmountPaid > 0 ? 'partial' : 'pending';
-    const now = Math.floor(Date.now() / 1000);
 
     // Update debt
-    db.update(customerDebts)
+    await db.update(customerDebts)
       .set({
-        amountPaid: newAmountPaid,
+        amountPaid: String(newAmountPaid),
         status: newStatus,
-        updatedAt: now,
+        updatedAt: new Date(),
       })
-      .where(eq(customerDebts.id, debtId))
-      .run();
+      .where(eq(customerDebts.id, debtId));
 
-    const updated = db.select().from(customerDebts).where(eq(customerDebts.id, debtId)).get();
+    const [updated] = await db.select().from(customerDebts).where(eq(customerDebts.id, debtId)).limit(1);
 
     // Update customer credit used
-    const customer = db
+    const [customer] = await db
       .select()
       .from(customers)
       .where(eq(customers.id, currentDebt.customerId))
-      .get();
+      .limit(1);
 
     if (customer) {
-      db.update(customers)
+      await db.update(customers)
         .set({
-          creditUsed: Math.max(0, customer.creditUsed - amount),
-          updatedAt: now,
+          creditUsed: String(Math.max(0, Number(customer.creditUsed) - amount)),
+          updatedAt: new Date(),
         })
-        .where(eq(customers.id, currentDebt.customerId))
-        .run();
+        .where(eq(customers.id, currentDebt.customerId));
     }
 
     return res.json(updated);
@@ -499,29 +488,29 @@ export async function recordDebtPayment(req: Request, res: Response) {
 export async function getCustomerStats(req: Request, res: Response) {
   try {
     // Total customers
-    const totalCustomers = db
+    const [totalCustomers] = await db
       .select({ count: count() })
       .from(customers)
-      .get();
+      .limit(1);
 
     // Active customers
-    const activeCustomers = db
+    const [activeCustomers] = await db
       .select({ count: count() })
       .from(customers)
       .where(eq(customers.active, 1))
-      .get();
+      .limit(1);
 
     // Total credit
-    const creditStats = db
+    const [creditStats] = await db
       .select({
         totalLimit: sum(customers.creditLimit),
         totalUsed: sum(customers.creditUsed),
       })
       .from(customers)
-      .get();
+      .limit(1);
 
     // Pending debts
-    const pendingDebts = db
+    const [pendingDebts] = await db
       .select({
         count: count(),
         total: sum(customerDebts.amount),
@@ -529,10 +518,10 @@ export async function getCustomerStats(req: Request, res: Response) {
       })
       .from(customerDebts)
       .where(eq(customerDebts.status, 'pending'))
-      .get();
+      .limit(1);
 
     // Top customers by purchases
-    const topCustomers = db
+    const topCustomers = await db
       .select({
         id: customers.id,
         name: customers.name,
@@ -541,8 +530,7 @@ export async function getCustomerStats(req: Request, res: Response) {
       })
       .from(customers)
       .orderBy(desc(customers.totalPurchases))
-      .limit(10)
-      .all();
+      .limit(10);
 
     return res.json({
       totalCustomers: Number(totalCustomers?.count) || 0,

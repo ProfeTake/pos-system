@@ -24,7 +24,7 @@ export const login = async (req: Request, res: Response) => {
     }
 
     // Buscar por username O email
-    const user = db
+    const [user] = await db
       .select()
       .from(users)
       .where(
@@ -33,7 +33,7 @@ export const login = async (req: Request, res: Response) => {
           eq(users.email, username)
         )
       )
-      .get();
+      .limit(1);
 
     if (!user) {
       SecureLogger.logSecurity('LOGIN_ATTEMPT_USER_NOT_FOUND', {
@@ -97,11 +97,11 @@ export const login = async (req: Request, res: Response) => {
 
 export const me = async (req: AuthRequest, res: Response) => {
   try {
-    const user = db
+    const [user] = await db
       .select()
       .from(users)
       .where(eq(users.id, req.user.id))
-      .get();
+      .limit(1);
     if (!user) return res.sendStatus(404);
 
     // Unificar formato con /login: devolver { user: {...} }

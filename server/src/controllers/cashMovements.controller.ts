@@ -10,23 +10,21 @@ import { eq, isNull, desc } from "drizzle-orm";
 export const getCurrentMovements = async (req: Request, res: Response) => {
     try {
         // Buscar sesión abierta
-        const openSession = db
+        const [openSession] = await db
             .select()
             .from(cashSessions)
             .where(isNull(cashSessions.closeTime))
             .orderBy(desc(cashSessions.openTime))
-            .limit(1)
-            .get();
+            .limit(1);
 
         if (!openSession) {
             return res.json([]);
         }
 
-        const movements = db
+        const movements = await db
             .select()
             .from(cashMovements)
-            .where(eq(cashMovements.sessionId, openSession.id))
-            .all();
+            .where(eq(cashMovements.sessionId, openSession.id));
 
         res.json(movements);
     } catch (error) {
@@ -38,11 +36,10 @@ export const getCurrentMovements = async (req: Request, res: Response) => {
 export const getBySession = async (req: Request, res: Response) => {
     const { sessionId } = req.params;
     try {
-        const movements = db
+        const movements = await db
             .select()
             .from(cashMovements)
-            .where(eq(cashMovements.sessionId, Number(sessionId)))
-            .all();
+            .where(eq(cashMovements.sessionId, Number(sessionId)));
 
         res.json(movements);
     } catch (error) {
@@ -54,15 +51,20 @@ export const getBySession = async (req: Request, res: Response) => {
 export const create = async (req: Request, res: Response) => {
     const { sessionId, type, amount, reason } = req.body;
     try {
-        const newMovement = db
+        const [result] = await db
             .insert(cashMovements)
             .values({
                 sessionId,
                 type,
                 amount,
                 reason,
-            })
-            .returning().get();
+            });
+
+        const [newMovement] = await db
+            .select()
+            .from(cashMovements)
+            .where(eq(cashMovements.id, result.insertId))
+            .limit(1);
 
         res.status(201).json(newMovement);
     } catch (error) {

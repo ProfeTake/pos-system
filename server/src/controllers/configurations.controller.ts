@@ -257,7 +257,7 @@ export const updateConfiguration = async (req: TenantRequest, res: Response) => 
       .where(and(eq(settings.tenantId, tenantId), eq(settings.key, key)))
       .limit(1);
 
-    const now = Math.floor(Date.now() / 1000);
+    const now = new Date();
 
     if (existing.length > 0) {
       // Actualizar
@@ -265,7 +265,7 @@ export const updateConfiguration = async (req: TenantRequest, res: Response) => 
         .update(settings)
         .set({
           value: JSON.stringify(value),
-          updatedAt: new Date(now * 1000),
+          updatedAt: now,
         })
         .where(and(eq(settings.tenantId, tenantId), eq(settings.key, key)));
     } else {
@@ -274,7 +274,7 @@ export const updateConfiguration = async (req: TenantRequest, res: Response) => 
         tenantId,
         key,
         value: JSON.stringify(value),
-        updatedAt: new Date(now * 1000),
+        updatedAt: now,
       });
     }
 
@@ -309,7 +309,7 @@ export const updateAllConfigurations = async (req: TenantRequest, res: Response)
   }
 
   try {
-    const now = Math.floor(Date.now() / 1000);
+    const now = new Date();
     const updates: string[] = [];
 
     for (const [key, value] of Object.entries(configs)) {
@@ -336,7 +336,7 @@ export const updateAllConfigurations = async (req: TenantRequest, res: Response)
           .update(settings)
           .set({
             value: JSON.stringify(value),
-            updatedAt: new Date(now * 1000),
+            updatedAt: now,
           })
           .where(and(eq(settings.tenantId, tenantId), eq(settings.key, key)));
       } else {
@@ -344,7 +344,7 @@ export const updateAllConfigurations = async (req: TenantRequest, res: Response)
           tenantId,
           key,
           value: JSON.stringify(value),
-          updatedAt: new Date(now * 1000),
+          updatedAt: now,
         });
       }
 

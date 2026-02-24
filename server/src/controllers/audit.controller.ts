@@ -51,21 +51,20 @@ export const getAuditLog = async (req: Request, res: Response) => {
     // Query con filtros
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const entries = db
+    const entries = await db
       .select()
       .from(auditLog)
       .where(where)
       .orderBy(desc(auditLog.createdAt))
       .limit(limitNum)
-      .offset(offset)
-      .all();
+      .offset(offset);
 
     // Count total
-    const countResult = db
+    const [countResult] = await db
       .select({ count: sql<number>`count(*)` })
       .from(auditLog)
       .where(where)
-      .get();
+      .limit(1);
 
     const total = countResult?.count || 0;
 
@@ -90,10 +89,9 @@ export const getAuditLog = async (req: Request, res: Response) => {
  */
 export const getUniqueActions = async (req: Request, res: Response) => {
   try {
-    const actions = db
+    const actions = await db
       .selectDistinct({ action: auditLog.action })
-      .from(auditLog)
-      .all();
+      .from(auditLog);
 
     res.json(actions.map((a) => a.action));
   } catch (error) {
@@ -108,10 +106,9 @@ export const getUniqueActions = async (req: Request, res: Response) => {
  */
 export const getUniqueEntities = async (req: Request, res: Response) => {
   try {
-    const entities = db
+    const entities = await db
       .selectDistinct({ entity: auditLog.entity })
-      .from(auditLog)
-      .all();
+      .from(auditLog);
 
     res.json(entities.map((e) => e.entity).filter(Boolean));
   } catch (error) {
@@ -133,7 +130,7 @@ export const getAuditStats = async (req: Request, res: Response) => {
     );
 
     // Acciones por tipo
-    const byAction = db
+    const byAction = await db
       .select({
         action: auditLog.action,
         count: sql<number>`count(*)`,
@@ -142,11 +139,10 @@ export const getAuditStats = async (req: Request, res: Response) => {
       .where(gte(auditLog.createdAt, sql`${startTimestamp}`))
       .groupBy(auditLog.action)
       .orderBy(desc(sql`count(*)`))
-      .limit(10)
-      .all();
+      .limit(10);
 
     // Actividad por usuario (join con users ya que username fue removido de audit_log)
-    const byUser = db
+    const byUser = await db
       .select({
         username: users.username,
         count: sql<number>`count(*)`,
@@ -156,15 +152,14 @@ export const getAuditStats = async (req: Request, res: Response) => {
       .where(gte(auditLog.createdAt, sql`${startTimestamp}`))
       .groupBy(users.username)
       .orderBy(desc(sql`count(*)`))
-      .limit(10)
-      .all();
+      .limit(10);
 
     // Total de entradas
-    const totalResult = db
+    const [totalResult] = await db
       .select({ count: sql<number>`count(*)` })
       .from(auditLog)
       .where(gte(auditLog.createdAt, sql`${startTimestamp}`))
-      .get();
+      .limit(1);
 
     res.json({
       period: `${daysNum} días`,

@@ -76,7 +76,7 @@ export const getAll = async (req: TenantRequest, res: Response) => {
       return res.json(cached);
     }
 
-    const allProducts = db.select().from(products).all();
+    const allProducts = await db.select().from(products);
     
     // Guardar en cache por 5 minutos
     await cacheService.set(cacheKeyStr, allProducts, CACHE_TTL.MEDIUM);
@@ -91,11 +91,11 @@ export const getAll = async (req: TenantRequest, res: Response) => {
 export const getByBarcode = async (req: Request, res: Response) => {
   const code = String(req.params.code);
   try {
-    const product = db
+    const [product] = await db
       .select()
       .from(products)
       .where(eq(products.barCode, code))
-      .get();
+      .limit(1);
     if (!product) {
       return res.json({ notFound: true });
     }
@@ -121,11 +121,10 @@ export const create = async (req: TenantRequest, res: Response) => {
       (payloadRaw as any).tenantId = tenantId;
     }
     
-    const newProduct = db
+    const [insertResult] = await db
       .insert(products)
-      .values(payloadRaw as InsertProduct)
-      .returning()
-      .get();
+      .values(payloadRaw as InsertProduct);
+    const [newProduct] = await db.select().from(products).where(eq(products.id, insertResult.insertId)).limit(1);
     
     // Invalidar cache de productos
     await cacheService.delPattern(`products:${tenantId || "default"}:*`);
@@ -151,12 +150,11 @@ export const update = async (req: TenantRequest, res: Response) => {
         .status(400)
         .json({ message: "No hay campos válidos para actualizar" });
     }
-    db
+    await db
       .update(products)
       .set(payload)
-      .where(eq(products.id, Number(id)))
-      .run();
-    const updated = db.select().from(products).where(eq(products.id, Number(id))).get();
+      .where(eq(products.id, Number(id)));
+    const [updated] = await db.select().from(products).where(eq(products.id, Number(id))).limit(1);
     if (!updated)
       return res.status(404).json({ message: "Producto no encontrado" });
     
@@ -175,7 +173,7 @@ export const remove = async (req: TenantRequest, res: Response) => {
   const tenantId = req.tenantId;
   
   try {
-    db.delete(products).where(eq(products.id, Number(id))).run();
+    await db.delete(products).where(eq(products.id, Number(id)));
     
     // Invalidar cache
     await cacheService.delPattern(`products:${tenantId || "default"}:*`);
@@ -196,12 +194,11 @@ export const updateStatus = async (req: Request, res: Response) => {
     ) {
       return res.status(400).json({ message: "Estado inválido" });
     }
-    db
+    await db
       .update(products)
       .set({ estado: estado })
-      .where(eq(products.id, Number(id)))
-      .run();
-    const updated = db.select().from(products).where(eq(products.id, Number(id))).get();
+      .where(eq(products.id, Number(id)));
+    const [updated] = await db.select().from(products).where(eq(products.id, Number(id))).limit(1);
     if (!updated)
       return res.status(404).json({ message: "Producto no encontrado" });
     res.json(updated);
@@ -275,10 +272,9 @@ export const processBatch = async (req: Request, res: Response) => {
     }
 
     // Obtener categorías del sistema
-    const allProducts = db
+    const allProducts = await db
       .select({ category: products.category })
-      .from(products)
-      .all();
+      .from(products);
     const uniqueCategories = [...new Set(allProducts.map((p) => p.category))];
 
     // Agregar categorías base si no existen
@@ -383,11 +379,11 @@ export const confirmBatch = async (req: Request, res: Response) => {
 
         // Verificar código de barras duplicado
         if (prod.barcode) {
-          const existing = db
+          const [existing] = await db
             .select()
             .from(products)
             .where(eq(products.barCode, prod.barcode))
-            .get();
+            .limit(1);
 
           if (existing) {
             errors.push({
@@ -414,11 +410,10 @@ export const confirmBatch = async (req: Request, res: Response) => {
         });
 
         // Crear producto
-        const newProduct = db
+        const [batchInsertResult] = await db
           .insert(products)
-          .values(payload as InsertProduct)
-          .returning()
-          .get();
+          .values(payload as InsertProduct);
+        const [newProduct] = await db.select().from(products).where(eq(products.id, batchInsertResult.insertId)).limit(1);
 
         created.push(newProduct);
       } catch (error: any) {
@@ -759,7 +754,7 @@ export const getSuggestions = async (req: TenantRequest, res: Response) => {
 
     // 1. Buscar en productos propios del tenant (prioridad alta)
     if (tenantId) {
-      const ownProducts = db
+      const ownProducts = await db
         .select({
           name: products.name,
           category: products.category,
@@ -779,8 +774,7 @@ export const getSuggestions = async (req: TenantRequest, res: Response) => {
             isNull(products.deletedAt)
           )
         )
-        .limit(Math.ceil(limitNum / 2))
-        .all();
+        .limit(Math.ceil(limitNum / 2));
 
       for (const p of ownProducts) {
         if (!seenNames.has(p.name.toLowerCase())) {
@@ -812,7 +806,7 @@ export const getSuggestions = async (req: TenantRequest, res: Response) => {
             isNull(products.deletedAt)
           );
 
-      const globalProducts = db
+      const globalProducts = await db
         .select({
           name: products.name,
           category: products.category,
@@ -821,8 +815,7 @@ export const getSuggestions = async (req: TenantRequest, res: Response) => {
         })
         .from(products)
         .where(globalQuery)
-        .limit(remaining * 2) // Obtener más por si hay duplicados
-        .all();
+        .limit(remaining * 2); // Obtener más por si hay duplicados
 
       for (const p of globalProducts) {
         if (suggestions.length >= limitNum) break;
@@ -924,12 +917,11 @@ export const searchProducts = async (req: TenantRequest, res: Response) => {
       );
     }
 
-    const results = db
+    const results = await db
       .select()
       .from(products)
       .where(whereClause)
-      .limit(limitNum)
-      .all();
+      .limit(limitNum);
 
     res.json({
       products: results,

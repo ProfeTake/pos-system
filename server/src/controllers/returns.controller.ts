@@ -16,12 +16,10 @@ export async function getReturns(req: Request, res: Response) {
 
     // Date filters
     if (startDate) {
-      const start = Math.floor(new Date(startDate as string).getTime() / 1000);
-      whereConditions.push(gte(returns.createdAt, start));
+      whereConditions.push(gte(returns.createdAt, new Date(startDate as string)));
     }
     if (endDate) {
-      const end = Math.floor(new Date(endDate as string).getTime() / 1000);
-      whereConditions.push(lte(returns.createdAt, end));
+      whereConditions.push(lte(returns.createdAt, new Date(endDate as string)));
     }
 
     // Status filter
@@ -35,19 +33,18 @@ export async function getReturns(req: Request, res: Response) {
     }
 
     const allReturns = whereConditions.length > 0
-      ? db.select().from(returns).where(and(...whereConditions)).orderBy(desc(returns.createdAt)).all()
-      : db.select().from(returns).orderBy(desc(returns.createdAt)).all();
+      ? await db.select().from(returns).where(and(...whereConditions)).orderBy(desc(returns.createdAt))
+      : await db.select().from(returns).orderBy(desc(returns.createdAt));
 
     // Get items for each return
-    const returnsWithItems = allReturns.map((ret) => {
-      const items = db
+    const returnsWithItems = await Promise.all(allReturns.map(async (ret) => {
+      const items = await db
         .select()
         .from(returnItems)
-        .where(eq(returnItems.returnId, ret.id))
-        .all();
+        .where(eq(returnItems.returnId, ret.id));
       
       return { ...ret, items };
-    });
+    }));
 
     return res.json(returnsWithItems);
   } catch (error) {
@@ -64,28 +61,27 @@ export async function getReturnById(req: Request, res: Response) {
   try {
     const id = req.params.id as string;
 
-    const returnRecord = db
+    const [returnRecord] = await db
       .select()
       .from(returns)
       .where(eq(returns.id, id))
-      .get();
+      .limit(1);
 
     if (!returnRecord) {
       return res.status(404).json({ error: 'Devolución no encontrada' });
     }
 
-    const items = db
+    const items = await db
       .select()
       .from(returnItems)
-      .where(eq(returnItems.returnId, id))
-      .all();
+      .where(eq(returnItems.returnId, id));
 
     // Get original sale
-    const sale = db
+    const [sale] = await db
       .select()
       .from(sales)
       .where(eq(sales.id, returnRecord.saleId))
-      .get();
+      .limit(1);
 
     return res.json({
       ...returnRecord,
@@ -115,11 +111,11 @@ export async function createReturn(req: Request, res: Response) {
     }
 
     // Verify sale exists
-    const sale = db
+    const [sale] = await db
       .select()
       .from(sales)
       .where(eq(sales.id, saleId))
-      .get();
+      .limit(1);
 
     if (!sale) {
       return res.status(404).json({ error: 'Venta no encontrada' });
@@ -130,11 +126,10 @@ export async function createReturn(req: Request, res: Response) {
     }
 
     // Get original sale items
-    const originalItems = db
+    const originalItems = await db
       .select()
       .from(saleItems)
-      .where(eq(saleItems.saleId, saleId))
-      .all();
+      .where(eq(saleItems.saleId, saleId));
 
     // Validate items to return
     const itemsToReturn: any[] = [];
@@ -169,17 +164,19 @@ export async function createReturn(req: Request, res: Response) {
 
     // Create return record
     const newReturnId = randomUUID();
-    const newReturn = db.insert(returns).values({
+    await db.insert(returns).values({
       id: newReturnId,
       saleId,
       reason,
-      totalRefund,
+      totalRefund: String(totalRefund),
       method: method || 'cash',
       status: 'completed',
       processedBy: userId,
       notes: notes || null,
-      createdAt: Math.floor(Date.now() / 1000),
-    }).returning().get();
+      createdAt: new Date(),
+    });
+
+    const [newReturn] = await db.select().from(returns).where(eq(returns.id, newReturnId)).limit(1);
 
     // Create return items
     const returnItemsData = itemsToReturn.map(item => ({
@@ -191,25 +188,23 @@ export async function createReturn(req: Request, res: Response) {
       subtotal: item.subtotal,
     }));
 
-    db.insert(returnItems).values(returnItemsData).run();
+    await db.insert(returnItems).values(returnItemsData);
 
     // Restore stock for returned items
     for (const item of itemsToReturn) {
-      db
+      await db
         .update(products)
         .set({
           stock: sql`${products.stock} + ${item.quantity}`,
         })
-        .where(eq(products.id, item.productId))
-        .run();
+        .where(eq(products.id, item.productId));
     }
 
     // Get complete return with items
-    const items_returned = db
+    const items_returned = await db
       .select()
       .from(returnItems)
-      .where(eq(returnItems.returnId, newReturnId))
-      .all();
+      .where(eq(returnItems.returnId, newReturnId));
 
     return res.status(201).json({
       ...newReturn,
@@ -229,23 +224,21 @@ export async function getReturnsBySale(req: Request, res: Response) {
   try {
     const saleId = Number(req.params.saleId);
 
-    const saleReturns = db
+    const saleReturns = await db
       .select()
       .from(returns)
       .where(eq(returns.saleId, saleId))
-      .orderBy(desc(returns.createdAt))
-      .all();
+      .orderBy(desc(returns.createdAt));
 
     // Get items for each return
-    const returnsWithItems = saleReturns.map((ret) => {
-      const items = db
+    const returnsWithItems = await Promise.all(saleReturns.map(async (ret) => {
+      const items = await db
         .select()
         .from(returnItems)
-        .where(eq(returnItems.returnId, ret.id))
-        .all();
+        .where(eq(returnItems.returnId, ret.id));
       
       return { ...ret, items };
-    });
+    }));
 
     return res.json(returnsWithItems);
   } catch (error) {
@@ -272,16 +265,15 @@ export async function getReturnStats(req: Request, res: Response) {
       default: daysAgo = 30;
     }
     
-    const startDate = Math.floor((Date.now() - daysAgo * 24 * 60 * 60 * 1000) / 1000);
+    const startDate = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
 
     // Total returns and refund amount
-    const totalReturns = db
+    const totalReturns = await db
       .select()
       .from(returns)
-      .where(gte(returns.createdAt, startDate))
-      .all();
+      .where(gte(returns.createdAt, startDate));
 
-    const totalRefunded = totalReturns.reduce((sum, ret) => sum + ret.totalRefund, 0);
+    const totalRefunded = totalReturns.reduce((sum, ret) => sum + Number(ret.totalRefund), 0);
 
     // Returns by reason
     const byReason: Record<string, number> = {};
@@ -296,16 +288,15 @@ export async function getReturnStats(req: Request, res: Response) {
         byMethod[ret.method] = { count: 0, total: 0 };
       }
       byMethod[ret.method].count++;
-      byMethod[ret.method].total += ret.totalRefund;
+      byMethod[ret.method].total += Number(ret.totalRefund);
     });
 
     // Most returned products
-    const allReturnItems = db
+    const allReturnItems = await db
       .select()
       .from(returnItems)
       .innerJoin(returns, eq(returnItems.returnId, returns.id))
-      .where(gte(returns.createdAt, startDate))
-      .all();
+      .where(gte(returns.createdAt, startDate)) as any[];
 
     const productReturns: Record<number, { name: string; quantity: number; count: number }> = {};
     
@@ -362,11 +353,11 @@ export async function updateReturn(req: Request, res: Response) {
     const id = req.params.id as string;
     const { status, notes } = req.body;
 
-    const existing = db
+    const [existing] = await db
       .select()
       .from(returns)
       .where(eq(returns.id, id))
-      .get();
+      .limit(1);
 
     if (!existing) {
       return res.status(404).json({ error: 'Devolución no encontrada' });
@@ -376,13 +367,12 @@ export async function updateReturn(req: Request, res: Response) {
     if (status) updates.status = status;
     if (notes !== undefined) updates.notes = notes;
 
-    db
+    await db
       .update(returns)
       .set(updates)
-      .where(eq(returns.id, id))
-      .run();
+      .where(eq(returns.id, id));
 
-    const result = db.select().from(returns).where(eq(returns.id, id)).get();
+    const [result] = await db.select().from(returns).where(eq(returns.id, id)).limit(1);
 
     return res.json(result);
   } catch (error) {
