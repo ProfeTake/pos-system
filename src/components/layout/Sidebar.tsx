@@ -78,6 +78,18 @@ export function Sidebar({
   const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
 
+  // Cierra el sidebar móvil y ejecuta la acción después de un frame
+  // para que Radix tenga tiempo de iniciar la animación de cierre
+  // antes de que cambie el contenido (evita overlay negro pegado).
+  const closeMobileThen = (action: () => void) => {
+    if (isMobile) {
+      setOpenMobile(false);
+      requestAnimationFrame(() => action());
+    } else {
+      action();
+    }
+  };
+
   const menuItemsBase = [
     {
       id: "dashboard" as ViewType,
@@ -201,19 +213,16 @@ export function Sidebar({
                   <SidebarMenuButton
                     onClick={() => {
                       if (item.onClick) {
-                        item.onClick();
-                        if (isMobile) setOpenMobile(false);
+                        closeMobileThen(() => item.onClick!());
                         return;
                       }
                       // SuperAdmin navega a app separada
                       if (item.id === "superadmin") {
-                        if (isMobile) setOpenMobile(false);
-                        navigate("/superadmin");
+                        closeMobileThen(() => navigate("/superadmin"));
                         return;
                       }
                       if (!item.disabled) {
-                        onNavigate(item.id as ViewType);
-                        if (isMobile) setOpenMobile(false);
+                        closeMobileThen(() => onNavigate(item.id as ViewType));
                       }
                     }}
                     isActive={
