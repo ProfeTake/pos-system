@@ -3,14 +3,14 @@ FROM node:18-alpine AS frontend-builder
 
 WORKDIR /app
 
-# Copy frontend package files and install
+# Copy frontend package files and install (limit memory for Railway)
 COPY package*.json ./
-RUN npm install
+RUN NODE_OPTIONS="--max-old-space-size=512" npm install --prefer-offline --no-audit --no-fund
 
 # Copy frontend source and build
 COPY index.html vite.config.ts tsconfig.json ./
 COPY src/ ./src/
-RUN npm run build
+RUN NODE_OPTIONS="--max-old-space-size=512" npm run build
 
 # Stage 2: Build backend
 FROM node:18-alpine AS backend-builder
@@ -20,7 +20,7 @@ WORKDIR /app
 # Copy server package files and install dependencies
 COPY server/package*.json ./server/
 WORKDIR /app/server
-RUN npm install
+RUN npm install --prefer-offline --no-audit --no-fund
 
 # Copy server source code and compile TypeScript
 COPY server/ ./
