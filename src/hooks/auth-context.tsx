@@ -7,6 +7,7 @@ import React, {
   useState,
 } from "react";
 import { authService } from "../services/auth.service";
+import { enableDemoMode, disableDemoMode } from "../lib/demo";
 
 /**
  * Represents the authenticated user's profile information.
@@ -114,6 +115,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setToken(token, remember);
       setUser(userData);
+      // Activar modo demo si el usuario es "demo"
+      if (userData.username === "demo") {
+        enableDemoMode();
+      } else {
+        disableDemoMode();
+      }
       return userData as NonNullable<AuthUser>;
     },
     []
@@ -126,6 +133,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error("Error during logout", e);
     } finally {
       clearToken();
+      disableDemoMode();
       setUser(null);
     }
   }, []);

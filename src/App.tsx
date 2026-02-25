@@ -11,6 +11,7 @@ import DocsLayout from "./components/features/docs/Docs";
 import Introduction from "./components/features/docs/content/Introduction";
 import SupplierInvoices from "./components/features/docs/SupplierInvoices";
 import { useAuth } from "./hooks/useAuth";
+import { DemoBanner } from "./components/common/DemoBanner";
 
 // Lazy load SuperAdmin app
 const SuperAdminApp = lazy(
@@ -119,5 +120,6 @@ export default function App() {
       {/* Main POS App - con redirección automática para superadmin */}
       <Route path="/*" element={<SuperAdminRedirect />} />
     </Routes>
+    <DemoBanner />
   );
 }

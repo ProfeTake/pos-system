@@ -3,6 +3,8 @@
 // - Usa `VITE_API_BASE` si está definido; fallback a http://localhost:3002
 // - Adjunta Authorization si existe token en sessionStorage/localStorage
 // - Manejo básico de errores y parse JSON seguro
+import { isDemoMode } from "./demo";
+import { getDemoResponse } from "./demo/router";
 
 export const API_BASE: string =
   (import.meta as any)?.env?.VITE_API_BASE || 
@@ -33,6 +35,25 @@ export async function apiFetch(
   path: string,
   init: RequestInit = {}
 ): Promise<Response> {
+  // ── Modo Demo: interceptar todas las llamadas de negocio ──
+  if (isDemoMode()) {
+    // Extraer el path relativo sin el dominio si viene como URL absoluta
+    let apiPath = path;
+    try {
+      if (path.startsWith("http")) {
+        apiPath = new URL(path).pathname;
+      }
+    } catch {}
+    const mockResult = getDemoResponse(apiPath, init.method ?? "GET", init.body);
+    if (mockResult !== null) {
+      return new Response(JSON.stringify(mockResult.data), {
+        status: mockResult.status,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    // Si mockResult es null → ruta de auth, dejar pasar al backend real
+  }
+
   // Construir URL con ruta ofuscada en producción
   const basePath = path.startsWith("http://") || path.startsWith("https://")
     ? path
