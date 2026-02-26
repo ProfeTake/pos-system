@@ -1,6 +1,8 @@
 /**
  * Demo Mode — utilidades públicas
  */
+import { demoStore } from "./store";
+
 const DEMO_FLAG_KEY = "demo_mode";
 
 /** Devuelve `true` si la sesión activa es del usuario Demo. */
@@ -16,6 +18,7 @@ export function isDemoMode(): boolean {
 export function enableDemoMode(): void {
   try {
     sessionStorage.setItem(DEMO_FLAG_KEY, "1");
+    demoStore.init();
   } catch {}
 }
 
@@ -23,5 +26,6 @@ export function enableDemoMode(): void {
 export function disableDemoMode(): void {
   try {
     sessionStorage.removeItem(DEMO_FLAG_KEY);
+    demoStore.reset();
   } catch {}
 }

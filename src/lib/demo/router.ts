@@ -1,19 +1,13 @@
 /**
  * Demo Mode Router
- * Mapea cada ruta de la API a fixtures JavaScript ficticios.
- * No realiza ninguna llamada de red para endpoints de negocio.
+ * Mapea cada ruta de la API al DemoStore mutable en memoria.
+ * Las mutaciones (POST/PUT/DELETE) modifican el store y se reflejan en los GETs.
+ * Cero llamadas al backend real (excepto /api/health).
  */
 import { toast } from "sonner";
-import { demoProducts } from "./fixtures/products";
-import { demoSales } from "./fixtures/sales";
+import { demoStore } from "./store";
 import {
   demoSettings,
-  demoCashSession,
-  demoCashBalance,
-  demoCashMovements,
-  demoCustomers,
-  demoCustomersStats,
-  demoPromotions,
   demoSubscription,
   demoSubscriptionPlans,
   demoStoreUsers,
@@ -22,7 +16,6 @@ import {
   demoAuditStats,
   demoReturns,
   demoReturnsStats,
-  demoSupplierInvoices,
   demoSupplierInvoicesStats,
   demoCategoryThresholds,
   demoAnalyticsMetrics,
@@ -41,8 +34,6 @@ interface MockResult {
 }
 
 // ─── Rutas que SIEMPRE pasan al backend real ──────────────────────────────
-// SOLO login y logout necesitan tocar la DB real.
-// /api/auth/me se intercepta para devolver el usuario demo ficticio.
 
 const PASSTHROUGH_PATTERNS = [
   /^\/api\/health/,
@@ -54,12 +45,7 @@ export function shouldPassThrough(path: string): boolean {
   return PASSTHROUGH_PATTERNS.some((re) => re.test(clean));
 }
 
-// Alias interno
-function isPassthrough(path: string): boolean {
-  return shouldPassThrough(path);
-}
-
-// ─── Usuario demo ficticio (devuelto por /api/auth/me) ────────────────────
+// ─── Usuario demo ficticio ───────────────────────────────────────────────
 
 const demoAuthUser = {
   user: {
@@ -72,71 +58,108 @@ const demoAuthUser = {
   },
 };
 
-// ─── Normaliza la ruta para matching ─────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────
 
 function normalizePath(path: string): string {
-  // Quita query string
   return path.split("?")[0].toLowerCase();
 }
 
-// ─── Detectar si es mutación ──────────────────────────────────────────────
-
-function isMutation(method: string): boolean {
+function isMutationMethod(method: string): boolean {
   return ["POST", "PUT", "PATCH", "DELETE"].includes(method.toUpperCase());
 }
 
-// ─── Resolver respuesta para GETs ─────────────────────────────────────────
+function parseBody(body: string | null | undefined): any {
+  try {
+    return body ? JSON.parse(body) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Asegura que el store esté inicializado */
+function ensureStore() {
+  if (!demoStore.ready) {
+    demoStore.init();
+  }
+}
+
+// ─── Resolver GETs (leen del store mutable) ───────────────────────────────
 
 function resolveGet(path: string): unknown {
+  ensureStore();
 
-  // Auth (me) - devolver usuario demo ficticio
+  // Auth
   if (path === "/api/auth/me") return demoAuthUser;
+  if (path === "/api/auth/login") return demoAuthUser;
+  if (path === "/api/auth/logout") return { success: true };
 
   // Products
-  if (path === "/api/products") return demoProducts;
+  if (path === "/api/products") return demoStore.products;
   if (path.startsWith("/api/products/by-barcode/")) {
     const code = path.split("/").pop();
-    const found = demoProducts.find((p) => p.barCode === code);
+    const found = demoStore.getProductByBarcode(code || "");
     return found ?? { notFound: true };
   }
+  if (path.startsWith("/api/products/google-search")) return { notFound: true };
   if (path.match(/^\/api\/products\/\d+$/)) {
     const id = parseInt(path.split("/").pop()!);
-    return demoProducts.find((p) => p.id === id) ?? { notFound: true };
+    return demoStore.getProduct(id) ?? { notFound: true };
   }
+  if (path.startsWith("/api/products/")) return { notFound: true };
 
   // Sales
-  if (path === "/api/sales/full" || path === "/api/sales") return demoSales;
+  if (path === "/api/sales/full" || path === "/api/sales") return demoStore.sales;
   if (path.match(/^\/api\/sales\/\d+$/)) {
     const id = parseInt(path.split("/").pop()!);
-    return demoSales.find((s) => s.id === id) ?? { notFound: true };
+    return demoStore.sales.find((s) => s.id === id) ?? { notFound: true };
   }
 
   // Cash session
-  if (path === "/api/cash-session/summary") return demoCashSession;
-  if (path === "/api/cash-session/balance") return demoCashBalance;
-  if (path === "/api/cash-session") return demoCashSession;
+  if (path === "/api/cash-session/summary") {
+    return demoStore.cashSession
+      ? { ...demoStore.cashSession, open: demoStore.cashSession.isOpen }
+      : { open: false };
+  }
+  if (path === "/api/cash-session/balance") return demoStore.cashBalance;
+  if (path === "/api/cash-session") return demoStore.cashSession;
 
   // Cash movements
-  if (path === "/api/cash-movements") return demoCashMovements;
+  if (path === "/api/cash-movements" || path === "/api/cash-movements/current")
+    return demoStore.cashMovements;
 
   // Settings
   if (path === "/api/settings") return demoSettings;
+  if (path === "/api/settings/cash-session/check-shift")
+    return {
+      isNewShift: false,
+      hasActiveSession: !!demoStore.cashSession?.isOpen,
+      reason: "Demo mode",
+    };
 
   // Promotions
-  if (path === "/api/promotions/active") return demoPromotions.filter((p) => p.isActive);
-  if (path === "/api/promotions") return demoPromotions;
+  if (path === "/api/promotions/active")
+    return demoStore.promotions.filter((p: any) => p.isActive);
+  if (path === "/api/promotions") return demoStore.promotions;
   if (path.match(/^\/api\/promotions\/\d+$/)) {
     const id = parseInt(path.split("/").pop()!);
-    return demoPromotions.find((p) => p.id === id) ?? { notFound: true };
+    return demoStore.promotions.find((p: any) => p.id === id) ?? { notFound: true };
   }
 
   // Customers
-  if (path === "/api/customers") return demoCustomers;
-  if (path === "/api/customers/stats") return demoCustomersStats;
-  if (path === "/api/customers/debts") return demoCustomers.filter((c) => c.creditUsed > 0);
+  if (path === "/api/customers") return demoStore.customers;
+  if (path === "/api/customers/stats") {
+    return {
+      total: demoStore.customers.length,
+      active: demoStore.customers.filter((c: any) => c.active).length,
+      totalDebt: demoStore.customers.reduce((s: number, c: any) => s + (c.creditUsed || 0), 0),
+      totalLoyaltyPoints: demoStore.customers.reduce((s: number, c: any) => s + (c.loyaltyPoints || 0), 0),
+    };
+  }
+  if (path === "/api/customers/debts")
+    return demoStore.customers.filter((c: any) => c.creditUsed > 0);
   if (path.match(/^\/api\/customers\/\d+$/)) {
     const id = parseInt(path.split("/").pop()!);
-    return demoCustomers.find((c) => c.id === id) ?? { notFound: true };
+    return demoStore.customers.find((c: any) => c.id === id) ?? { notFound: true };
   }
 
   // Subscription
@@ -163,12 +186,12 @@ function resolveGet(path: string): unknown {
   if (path.match(/^\/api\/returns\/sale\/\d+$/)) return [];
 
   // Supplier invoices
-  if (path === "/api/supplier-invoices") return demoSupplierInvoices;
+  if (path === "/api/supplier-invoices") return demoStore.supplierInvoices;
   if (path === "/api/supplier-invoices/stats") return demoSupplierInvoicesStats;
   if (path === "/api/supplier-invoices/payments") return [];
   if (path.match(/^\/api\/supplier-invoices\/\d+$/)) {
     const id = parseInt(path.split("/").pop()!);
-    return demoSupplierInvoices.find((i) => i.id === id) ?? { notFound: true };
+    return demoStore.supplierInvoices.find((i: any) => i.id === id) ?? { notFound: true };
   }
 
   // Category thresholds
@@ -182,74 +205,141 @@ function resolveGet(path: string): unknown {
   if (path === "/api/analytics/restock-predictions") return demoRestockPredictions;
   if (path.startsWith("/api/analytics")) return {};
 
+  // Product catalog/lookup (no OpenFoodFacts en demo)
+  if (path.startsWith("/api/products/catalog")) return { notFound: true };
+  if (path.startsWith("/api/products/lookup")) return { notFound: true };
+
   // Fiscal
-  if (path.startsWith("/api/fiscal")) return { enabled: false, message: "No disponible en modo demo" };
+  if (path.startsWith("/api/fiscal"))
+    return { enabled: false, message: "No disponible en modo demo" };
+
+  // Events (SSE) - return empty
+  if (path === "/api/events") return {};
 
   // Catch-all
   return {};
 }
 
-// ─── Respuesta para mutaciones ────────────────────────────────────────────
+// ─── Resolver mutaciones (escriben en el store mutable) ───────────────────
 
-function mutationResponse(path: string, method: string, body: string | null | undefined): unknown {
+function resolveMutation(path: string, method: string, body: string | null | undefined): unknown {
+  ensureStore();
   const p = normalizePath(path);
+  const data = parseBody(body);
 
-  // Abrir sesión de caja → devolver sesión ficticia
-  if (p === "/api/cash-session/open") return demoCashSession;
+  // ── Auth ───────────────────────────────────────────────────────────
+  if (p === "/api/auth/login") return { token: "demo-fake-jwt-token", user: demoAuthUser.user };
+  if (p === "/api/auth/logout") return { success: true };
 
-  // Cerrar sesión
-  if (p === "/api/cash-session/close") return { ...demoCashSession, closeTime: new Date().toISOString() };
+  // ── Products ───────────────────────────────────────────────────────
+  if (p === "/api/products" && method === "POST") {
+    return demoStore.addProduct(data);
+  }
+  if (p.match(/^\/api\/products\/\d+$/) && method === "PUT") {
+    const id = parseInt(p.split("/").pop()!);
+    return demoStore.updateProduct(id, data) ?? { success: true };
+  }
+  if (p.match(/^\/api\/products\/\d+$/) && method === "DELETE") {
+    const id = parseInt(p.split("/").pop()!);
+    demoStore.deleteProduct(id);
+    return { success: true };
+  }
+  if (p.match(/^\/api\/products\/\d+\/estado/)) {
+    const id = parseInt(p.split("/")[3]);
+    return demoStore.updateProduct(id, { estado: data.estado }) ?? { success: true };
+  }
 
-  // Crear venta → devolver venta genérica
+  // ── Sales ──────────────────────────────────────────────────────────
   if (p === "/api/sales" && method === "POST") {
-    let parsedBody: Record<string, unknown> = {};
-    try { parsedBody = body ? JSON.parse(body) : {}; } catch {}
-    return {
-      id: Math.floor(Math.random() * 90000) + 10000,
-      ...parsedBody,
-      date: new Date().toISOString(),
-      status: "completed",
-    };
+    return demoStore.addSale(data);
+  }
+  if (p.match(/^\/api\/sales\/\d+\/void/)) {
+    const id = parseInt(p.split("/")[3]);
+    return demoStore.voidSale(id);
   }
 
-  // Anular venta
-  if (p.match(/^\/api\/sales\/\d+\/void/)) return { success: true };
+  // ── Cash Session ───────────────────────────────────────────────────
+  if (p === "/api/cash-session/open") {
+    return demoStore.openCashSession(data);
+  }
+  if (p === "/api/cash-session/close") {
+    return demoStore.closeCashSession(data);
+  }
 
-  // Movimientos de caja
+  // ── Cash Movements ─────────────────────────────────────────────────
   if (p === "/api/cash-movements") {
-    let parsedBody: Record<string, unknown> = {};
-    try { parsedBody = body ? JSON.parse(body) : {}; } catch {}
-    return { id: Date.now(), sessionId: 42, ...parsedBody, createdAt: new Date().toISOString() };
+    return demoStore.addCashMovement(data);
   }
 
-  // Default: éxito genérico
+  // ── Customers ──────────────────────────────────────────────────────
+  if (p === "/api/customers" && method === "POST") {
+    return demoStore.addCustomer(data);
+  }
+  if (p.match(/^\/api\/customers\/\d+$/) && method === "PUT") {
+    const id = parseInt(p.split("/").pop()!);
+    return demoStore.updateCustomer(id, data) ?? { success: true };
+  }
+  if (p.match(/^\/api\/customers\/\d+$/) && method === "DELETE") {
+    const id = parseInt(p.split("/").pop()!);
+    demoStore.deleteCustomer(id);
+    return { success: true };
+  }
+
+  // ── Promotions ─────────────────────────────────────────────────────
+  if (p === "/api/promotions" && method === "POST") {
+    return demoStore.addPromotion(data);
+  }
+  if (p.match(/^\/api\/promotions\/\d+$/) && method === "PUT") {
+    const id = parseInt(p.split("/").pop()!);
+    return demoStore.updatePromotion(id, data) ?? { success: true };
+  }
+  if (p.match(/^\/api\/promotions\/\d+$/) && method === "DELETE") {
+    const id = parseInt(p.split("/").pop()!);
+    demoStore.deletePromotion(id);
+    return { success: true };
+  }
+
+  // ── Settings / Configurations ──────────────────────────────────────
+  if (p.startsWith("/api/configurations") || p.startsWith("/api/settings")) {
+    return { success: true };
+  }
+
+  // ── Supplier invoices ──────────────────────────────────────────────
+  if (p === "/api/supplier-invoices" && method === "POST") {
+    const invoice = { id: Date.now(), ...data, createdAt: new Date().toISOString() };
+    demoStore.supplierInvoices.push(invoice);
+    return invoice;
+  }
+
+  // ── Returns ────────────────────────────────────────────────────────
+  if (p === "/api/returns" && method === "POST") {
+    return { id: Date.now(), ...data, status: "completed", createdAt: new Date().toISOString() };
+  }
+
+  // ── Catch-all éxito ────────────────────────────────────────────────
   return { success: true, id: Date.now() };
 }
 
 // ─── Función principal exportada ──────────────────────────────────────────
 
-/**
- * Dado una ruta y método HTTP, retorna una respuesta mock o `null` si debe
- * pasar al backend real.
- */
 export function getDemoResponse(
   rawPath: string,
   method: string,
   body?: BodyInit | null
 ): MockResult | null {
-  if (isPassthrough(rawPath)) return null;
+  if (shouldPassThrough(rawPath)) return null;
 
   const path = normalizePath(rawPath);
-  const mutation = isMutation(method);
+  const mutation = isMutationMethod(method);
 
   if (mutation) {
-    // Mostrar aviso al usuario
-    toast.info("Modo Demo – los cambios no se guardan", {
-      id: "demo-mutation",   // evita spam de toasts duplicados
+    const result = resolveMutation(path, method.toUpperCase(), body as string | null);
+    toast.info("Modo Demo – cambios guardados solo en esta sesión", {
+      id: "demo-mutation",
       duration: 2500,
     });
     return {
-      data: mutationResponse(rawPath, method, body as string | null),
+      data: result,
       status: 200,
       isMutation: true,
     };

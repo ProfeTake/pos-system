@@ -509,13 +509,13 @@ export function Inventory({
       switch (sortKey) {
         case "priority":
           cmp = getProductStatusRank(a) - getProductStatusRank(b);
-          if (cmp === 0) cmp = a.name.localeCompare(b.name, "es");
+          if (cmp === 0) cmp = (a.name || "").localeCompare(b.name || "", "es");
           break;
         case "name":
-          cmp = a.name.localeCompare(b.name, "es");
+          cmp = (a.name || "").localeCompare(b.name || "", "es");
           break;
         case "category":
-          cmp = a.category.localeCompare(b.category, "es");
+          cmp = (a.category || "").localeCompare(b.category || "", "es");
           break;
         case "stock":
           cmp = a.stock - b.stock;
