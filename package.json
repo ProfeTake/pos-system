@@ -57,6 +57,7 @@
     "dev:all": "concurrently \"npm run dev\" \"cd server && npm run dev\"",
     "dev:all:tsc": "concurrently \"npm run dev\" \"cd server && npm run dev:tsc\" \"cd server && npm run dev:run\"",
     "build": "vite build",
+    "build:all": "npm run build && cd server && npm ci --no-audit --no-fund && npm run build",
     "test": "vitest",
     "test:watch": "vitest --watch",
     "test:ui": "vitest --ui",

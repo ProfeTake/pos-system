@@ -94,7 +94,11 @@ app.use("/api/supplier-invoices", supplierInvoicesRoutes);
 // En producción, servir el frontend React (build estático)
 if (process.env.NODE_ENV === "production") {
   const fs = require("fs");
-  const frontendPath = path.resolve(__dirname, "../../frontend");
+  // Nixpacks: frontend en {repo}/dist, servidor en {repo}/server/dist
+  // Docker:   frontend en /app/frontend, servidor en /app/server/dist
+  const nixpacksPath = path.resolve(__dirname, "../../dist");
+  const dockerPath = path.resolve(__dirname, "../../frontend");
+  const frontendPath = fs.existsSync(nixpacksPath) ? nixpacksPath : dockerPath;
   const indexPath = path.join(frontendPath, "index.html");
   
   console.log(`📂 Frontend path: ${frontendPath}`);
