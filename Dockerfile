@@ -1,57 +1,40 @@
-# Stage 1: Build frontend
-FROM node:18-alpine AS frontend-builder
-
-WORKDIR /app
-
-# Copy frontend package files and install (limit memory for Railway)
-COPY package*.json ./
-RUN NODE_OPTIONS="--max-old-space-size=512" npm install --prefer-offline --no-audit --no-fund
-
-# Copy frontend source and build
-COPY index.html vite.config.ts tsconfig.json ./
-COPY src/ ./src/
-RUN NODE_OPTIONS="--max-old-space-size=512" npm run build
-
-# Stage 2: Build backend
-FROM node:18-alpine AS backend-builder
-
-WORKDIR /app
-
-# Copy server package files and install dependencies
-COPY server/package*.json ./server/
-WORKDIR /app/server
-RUN npm install --prefer-offline --no-audit --no-fund
-
-# Copy server source code and compile TypeScript
-COPY server/ ./
-RUN npm run build
-
-# Stage 3: Production
+# Single-stage build — optimizado para Railway (bajo RAM)
 FROM node:18-alpine
 
-# Instalar tzdata para que TZ=America/Santiago funcione en Alpine
+# tzdata para TZ=America/Santiago
 RUN apk add --no-cache tzdata
+ENV TZ=America/Santiago
 
+WORKDIR /app
+
+# ── 1. Build frontend ──────────────────────────────────────────────────────
+COPY package*.json ./
+RUN npm ci --ignore-scripts --no-audit --no-fund && npm cache clean --force
+
+COPY index.html vite.config.ts tsconfig.json ./
+COPY src/ ./src/
+RUN NODE_OPTIONS="--max-old-space-size=384" npm run build
+
+# Limpiar fuentes y dependencias del frontend (libera RAM/disco)
+RUN rm -rf node_modules src index.html vite.config.ts tsconfig.json package*.json
+
+# ── 2. Build backend ───────────────────────────────────────────────────────
+COPY server/ ./server/
+WORKDIR /app/server
+RUN npm ci --ignore-scripts --no-audit --no-fund && npm cache clean --force
+RUN NODE_OPTIONS="--max-old-space-size=384" npm run build
+
+# Limpiar fuentes TypeScript del backend (solo dejamos dist/)
+RUN rm -rf src/ tsconfig.json drizzle.config.ts
+
+# ── 3. Runtime ─────────────────────────────────────────────────────────────
 WORKDIR /app/server
 
-# Copy backend built files and dependencies
-COPY --from=backend-builder /app/server/dist ./dist
-COPY --from=backend-builder /app/server/node_modules ./node_modules
-COPY --from=backend-builder /app/server/package.json ./package.json
+# Copiar drizzle config de vuelta (necesario en runtime para migraciones)
+COPY server/drizzle.config.ts ./drizzle.config.ts
 
-# Copy drizzle schema/migrations
-COPY --from=backend-builder /app/server/drizzle ./drizzle
-COPY --from=backend-builder /app/server/drizzle.config.ts ./drizzle.config.ts
-
-# Copy frontend build output (served by Express in production)
-COPY --from=frontend-builder /app/dist ../frontend
-
-# Copy startup script
 COPY server/start.sh ./start.sh
 RUN chmod +x ./start.sh
-
-# Timezone Chile para que Date() use hora local correcta
-ENV TZ=America/Santiago
 
 EXPOSE 3002
 
