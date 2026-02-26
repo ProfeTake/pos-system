@@ -35,8 +35,8 @@ export const demoCashSession = {
   declaredCash: null,
   difference: null,
   notes: "Apertura matinal",
-  windowOpen: "10:00",
-  windowClose: "23:00",
+  windowOpen: new Date(2026, 1, 25, 10, 0, 0).toISOString(),
+  windowClose: new Date(2026, 1, 25, 23, 0, 0).toISOString(),
   isOpen: true,
   // Campos calculados del summary
   totalSales: demoSales
