@@ -1,4 +1,4 @@
-import type { Product } from "../../types";
+import type { Product } from "@/types";
 
 export const demoProducts: Product[] = [
   // ── Cervezas ──────────────────────────────────────────────────────────────
@@ -14,7 +14,7 @@ export const demoProducts: Product[] = [
     barCode: "7801234500001",
     ml: 350,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
   },
   {
     id: 2,
@@ -28,7 +28,7 @@ export const demoProducts: Product[] = [
     barCode: "7801234500002",
     ml: 500,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
   },
   {
     id: 3,
@@ -42,7 +42,7 @@ export const demoProducts: Product[] = [
     barCode: "8710791001009",
     ml: 330,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
   },
   {
     id: 4,
@@ -56,7 +56,7 @@ export const demoProducts: Product[] = [
     barCode: "7501049124577",
     ml: 355,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
   },
   {
     id: 5,
@@ -70,7 +70,7 @@ export const demoProducts: Product[] = [
     barCode: "7803234500005",
     ml: 330,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
   },
   {
     id: 6,
@@ -84,7 +84,7 @@ export const demoProducts: Product[] = [
     barCode: "7803234500006",
     ml: 330,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
   },
   {
     id: 7,
@@ -98,7 +98,7 @@ export const demoProducts: Product[] = [
     barCode: "7801234500007",
     ml: 1000,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
   },
 
   // ── Vinos ─────────────────────────────────────────────────────────────────
@@ -114,7 +114,7 @@ export const demoProducts: Product[] = [
     barCode: "7804320200108",
     ml: 750,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
     alcoholContent: 13.5,
   },
   {
@@ -129,7 +129,7 @@ export const demoProducts: Product[] = [
     barCode: "7804320200208",
     ml: 750,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
     alcoholContent: 13.0,
   },
   {
@@ -144,7 +144,7 @@ export const demoProducts: Product[] = [
     barCode: "7804320200308",
     ml: 750,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
     alcoholContent: 13.5,
   },
   {
@@ -159,7 +159,7 @@ export const demoProducts: Product[] = [
     barCode: "7804320200408",
     ml: 1000,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
     alcoholContent: 13.0,
   },
   {
@@ -174,7 +174,7 @@ export const demoProducts: Product[] = [
     barCode: "7804320200508",
     ml: 750,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
     alcoholContent: 12.5,
   },
   {
@@ -189,7 +189,7 @@ export const demoProducts: Product[] = [
     barCode: "7804320200608",
     ml: 750,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
     alcoholContent: 13.5,
   },
 
@@ -206,7 +206,7 @@ export const demoProducts: Product[] = [
     barCode: "7803456700014",
     ml: 1000,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
     alcoholContent: 35,
   },
   {
@@ -221,7 +221,7 @@ export const demoProducts: Product[] = [
     barCode: "7803456700015",
     ml: 750,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
     alcoholContent: 40,
   },
   {
@@ -236,7 +236,7 @@ export const demoProducts: Product[] = [
     barCode: "7803456700016",
     ml: 1000,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
     alcoholContent: 40,
   },
 
@@ -253,7 +253,7 @@ export const demoProducts: Product[] = [
     barCode: "5000267023571",
     ml: 750,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
     alcoholContent: 40,
   },
   {
@@ -268,7 +268,7 @@ export const demoProducts: Product[] = [
     barCode: "7312040017080",
     ml: 750,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
     alcoholContent: 40,
   },
   {
@@ -283,7 +283,7 @@ export const demoProducts: Product[] = [
     barCode: "7420003006117",
     ml: 750,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
     alcoholContent: 40,
   },
   {
@@ -298,7 +298,7 @@ export const demoProducts: Product[] = [
     barCode: "5010677815004",
     ml: 750,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
     alcoholContent: 40,
   },
 
@@ -315,7 +315,7 @@ export const demoProducts: Product[] = [
     barCode: "7803456700021",
     ml: 1500,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
   },
   {
     id: 22,
@@ -329,7 +329,7 @@ export const demoProducts: Product[] = [
     barCode: "5449000000996",
     ml: 1500,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
   },
   {
     id: 23,
@@ -343,7 +343,7 @@ export const demoProducts: Product[] = [
     barCode: "7803456700023",
     ml: 1000,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
   },
   {
     id: 24,
@@ -357,7 +357,7 @@ export const demoProducts: Product[] = [
     barCode: "9002490100070",
     ml: 250,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
   },
   {
     id: 25,
@@ -371,6 +371,6 @@ export const demoProducts: Product[] = [
     barCode: "5449000054227",
     ml: 1500,
     measureUnit: "ml",
-    estado: "activo",
+    estado: "NORMAL",
   },
 ];

@@ -41,15 +41,38 @@ interface MockResult {
 }
 
 // ─── Rutas que SIEMPRE pasan al backend real ──────────────────────────────
+// SOLO login y logout necesitan tocar la DB real.
+// /api/auth/me se intercepta para devolver el usuario demo ficticio.
 
 const PASSTHROUGH_PATTERNS = [
-  /^\/api\/auth/,      // login, logout, me
-  /^\/api\/health/,    // health check
+  /^\/api\/auth\/login$/,
+  /^\/api\/auth\/logout$/,
+  /^\/api\/health/,
 ];
 
-function isPassthrough(path: string): boolean {
-  return PASSTHROUGH_PATTERNS.some((re) => re.test(path));
+/** Verifica si una ruta debe pasar al backend real (true = NO interceptar). */
+export function shouldPassThrough(path: string): boolean {
+  const clean = path.split("?")[0].toLowerCase();
+  return PASSTHROUGH_PATTERNS.some((re) => re.test(clean));
 }
+
+// Alias interno
+function isPassthrough(path: string): boolean {
+  return shouldPassThrough(path);
+}
+
+// ─── Usuario demo ficticio (devuelto por /api/auth/me) ────────────────────
+
+const demoAuthUser = {
+  user: {
+    id: 99,
+    username: "demo",
+    email: "demo@botilleria-eltonel.cl",
+    role: "vendedor",
+    fullName: "Usuario Demo",
+    tenantId: "demo-tenant",
+  },
+};
 
 // ─── Normaliza la ruta para matching ─────────────────────────────────────
 
@@ -67,6 +90,9 @@ function isMutation(method: string): boolean {
 // ─── Resolver respuesta para GETs ─────────────────────────────────────────
 
 function resolveGet(path: string): unknown {
+
+  // Auth (me) - devolver usuario demo ficticio
+  if (path === "/api/auth/me") return demoAuthUser;
 
   // Products
   if (path === "/api/products") return demoProducts;

@@ -1,4 +1,4 @@
-import type { Sale } from "../../types";
+import type { Sale } from "@/types";
 import { demoProducts } from "./products";
 
 /** Genera ventas ficticias para los últimos N días */

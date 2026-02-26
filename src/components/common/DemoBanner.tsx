@@ -1,11 +1,20 @@
+import { useEffect, useState } from "react";
 import { isDemoMode } from "../../lib/demo";
 
 /**
  * Badge fijo que indica al visitante que está en Modo Demo.
- * Solo se renderiza cuando el flag de demo está activo en sessionStorage.
+ * Revisa sessionStorage periódicamente para reaccionar a cambios.
  */
 export function DemoBanner() {
-  if (!isDemoMode()) return null;
+  const [visible, setVisible] = useState(isDemoMode);
+
+  useEffect(() => {
+    // Revisar cada 500ms si cambió el flag en sessionStorage
+    const id = setInterval(() => setVisible(isDemoMode()), 500);
+    return () => clearInterval(id);
+  }, []);
+
+  if (!visible) return null;
 
   return (
     <div

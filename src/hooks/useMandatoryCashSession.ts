@@ -6,6 +6,7 @@ import {
   isWithinOperationalHours,
 } from "../utils/businessHours";
 import { API_BASE, apiFetchJSON, postJSON } from "../lib/api";
+import { isDemoMode } from "../lib/demo";
 
 // Fuente de verdad: backend summary. Evitamos manipular localStorage salvo para recordar última apertura.
 const LS_KEY = "pos.cash.session.cache";
@@ -27,6 +28,9 @@ const SSE_BASE_RECONNECT_DELAY = 5000; // 5 segundos base
 
 function connectSSE(onEvent: () => void) {
   sseListeners.add(onEvent);
+
+  // En modo demo no conectamos SSE al backend real
+  if (isDemoMode()) return;
 
   // Si ya hay conexión activa, solo agregamos el listener
   if (globalEventSource?.readyState === EventSource.OPEN) {

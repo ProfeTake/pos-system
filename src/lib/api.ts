@@ -4,7 +4,7 @@
 // - Adjunta Authorization si existe token en sessionStorage/localStorage
 // - Manejo básico de errores y parse JSON seguro
 import { isDemoMode } from "./demo";
-import { getDemoResponse } from "./demo/router";
+import { getDemoResponse, shouldPassThrough } from "./demo/router";
 
 export const API_BASE: string =
   (import.meta as any)?.env?.VITE_API_BASE || 
@@ -44,14 +44,18 @@ export async function apiFetch(
         apiPath = new URL(path).pathname;
       }
     } catch {}
-    const mockResult = getDemoResponse(apiPath, init.method ?? "GET", init.body);
-    if (mockResult !== null) {
-      return new Response(JSON.stringify(mockResult.data), {
-        status: mockResult.status,
-        headers: { "Content-Type": "application/json" },
-      });
+
+    // Solo login y logout pasan al backend real
+    if (!shouldPassThrough(apiPath)) {
+      const mockResult = getDemoResponse(apiPath, init.method ?? "GET", init.body);
+      if (mockResult !== null) {
+        return new Response(JSON.stringify(mockResult.data), {
+          status: mockResult.status,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
     }
-    // Si mockResult es null → ruta de auth, dejar pasar al backend real
+    // Si shouldPassThrough → dejar el request continuar al backend real
   }
 
   // Construir URL con ruta ofuscada en producción
