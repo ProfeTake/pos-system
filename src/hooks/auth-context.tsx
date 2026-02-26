@@ -7,7 +7,17 @@ import React, {
   useState,
 } from "react";
 import { authService } from "../services/auth.service";
-import { enableDemoMode, disableDemoMode } from "../lib/demo";
+import { enableDemoMode, disableDemoMode, isDemoMode } from "../lib/demo";
+
+// ── Usuario demo ficticio (100% frontend, NO existe en BD) ────────────────
+const DEMO_USER: NonNullable<AuthUser> = {
+  id: 99,
+  username: "demo",
+  email: "demo@botilleria-eltonel.cl",
+  role: "vendedor",
+  fullName: "Usuario Demo",
+};
+const DEMO_TOKEN = "demo-fake-jwt-token";
 
 /**
  * Represents the authenticated user's profile information.
@@ -82,25 +92,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (!token) {
       setUser(null);
+      disableDemoMode();
+      setLoading(false);
+      return;
+    }
+
+    // Demo mode activo → devolver usuario ficticio sin llamar al backend
+    if (isDemoMode()) {
+      setUser(DEMO_USER);
       setLoading(false);
       return;
     }
 
     try {
       const data = await authService.getMe();
-      // Aceptar ambos formatos: { user: {...} } o directamente el objeto de usuario
       const maybeUser = (data as any)?.user ?? data;
       if (maybeUser && typeof maybeUser === "object" && maybeUser.id) {
         setUser(maybeUser as NonNullable<AuthUser>);
-        // Activar modo demo si el usuario es "demo" (cubre recarga de página / nueva pestaña)
-        if (maybeUser.username === "demo") {
-          enableDemoMode();
-        } else {
-          disableDemoMode();
-        }
       } else {
         clearToken();
-        disableDemoMode();
         setUser(null);
       }
     } catch (err) {
@@ -114,34 +124,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(
     async (username: string, password: string, remember?: boolean) => {
+      // ★ Demo: 100% frontend, cero llamadas al backend
+      if (username === "demo" && password === "demo") {
+        enableDemoMode();
+        setToken(DEMO_TOKEN, false);
+        setUser(DEMO_USER);
+        return DEMO_USER;
+      }
+
+      // Usuarios reales
+      disableDemoMode();
       const { token, user: userData } = await authService.login({
         username,
         password,
         remember,
       });
-
       setToken(token, remember);
       setUser(userData);
-      // Activar modo demo si el usuario es "demo"
-      if (userData.username === "demo") {
-        enableDemoMode();
-      } else {
-        disableDemoMode();
-      }
       return userData as NonNullable<AuthUser>;
     },
     []
   );
 
   const logout = useCallback(async () => {
-    try {
-      await authService.logout();
-    } catch (e) {
-      console.error("Error during logout", e);
-    } finally {
-      clearToken();
-      disableDemoMode();
-      setUser(null);
+    const wasDemo = isDemoMode();
+    clearToken();
+    disableDemoMode();
+    setUser(null);
+    // Solo llamar al backend si NO era demo
+    if (!wasDemo) {
+      try {
+        await authService.logout();
+      } catch (e) {
+        console.error("Error during logout", e);
+      }
     }
   }, []);
 

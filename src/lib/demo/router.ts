@@ -45,8 +45,6 @@ interface MockResult {
 // /api/auth/me se intercepta para devolver el usuario demo ficticio.
 
 const PASSTHROUGH_PATTERNS = [
-  /^\/api\/auth\/login$/,
-  /^\/api\/auth\/logout$/,
   /^\/api\/health/,
 ];
 
