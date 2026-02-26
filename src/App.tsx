@@ -56,6 +56,7 @@ function SuperAdminRedirect() {
 
 export default function App() {
   return (
+    <>
     <Routes>
       {/* SuperAdmin Route */}
       <Route
@@ -121,5 +122,6 @@ export default function App() {
       <Route path="/*" element={<SuperAdminRedirect />} />
     </Routes>
     <DemoBanner />
+    </>
   );
 }
