@@ -63,6 +63,7 @@ import { MainLayout } from "./components/layout/MainLayout";
  */
 function PosAppContent() {
   const [currentView, setCurrentView] = useState<ViewType>("dashboard");
+  const { user, loading: authLoading, logout: handleLogout, login } = useAuth();
   const {
     products,
     setProducts,
@@ -71,8 +72,7 @@ function PosAppContent() {
     refreshAll: refreshData,
     fetchProducts,
     fetchSales,
-  } = useInitialData();
-  const { user, loading: authLoading, logout: handleLogout, login } = useAuth();
+  } = useInitialData(!authLoading && !!user);
 
   // Determinar qué opciones se pueden usar según el estado de la caja
   // IMPORTANTE: Debe estar antes del useEffect que usa refreshCashSession

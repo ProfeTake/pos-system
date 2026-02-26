@@ -92,8 +92,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const maybeUser = (data as any)?.user ?? data;
       if (maybeUser && typeof maybeUser === "object" && maybeUser.id) {
         setUser(maybeUser as NonNullable<AuthUser>);
+        // Activar modo demo si el usuario es "demo" (cubre recarga de página / nueva pestaña)
+        if (maybeUser.username === "demo") {
+          enableDemoMode();
+        } else {
+          disableDemoMode();
+        }
       } else {
         clearToken();
+        disableDemoMode();
         setUser(null);
       }
     } catch (err) {

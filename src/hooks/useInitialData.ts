@@ -19,7 +19,7 @@ import { toast } from "sonner";
  * - `fetchProducts`: Function to re-fetch only products.
  * - `fetchSales`: Function to re-fetch only sales.
  */
-export function useInitialData() {
+export function useInitialData(enabled: boolean = true) {
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
 
@@ -96,11 +96,11 @@ export function useInitialData() {
     fetchSales();
   }, [fetchProducts, fetchSales]);
 
-  // Carga inicial - solo una vez
+  // Carga inicial - se activa cuando `enabled` pasa a true (ej: auth resuelto)
   useEffect(() => {
     mountedRef.current = true;
 
-    if (!initialLoadDoneRef.current) {
+    if (enabled && !initialLoadDoneRef.current) {
       initialLoadDoneRef.current = true;
       refreshAll();
     }
@@ -108,7 +108,7 @@ export function useInitialData() {
     return () => {
       mountedRef.current = false;
     };
-  }, []); // Sin dependencias para ejecutar solo una vez
+  }, [enabled]); // Se re-evalúa cuando cambia `enabled`
 
   return {
     products,
