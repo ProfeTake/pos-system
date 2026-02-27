@@ -149,6 +149,8 @@ if (typeof document !== "undefined") {
   });
 }
 // ─────────────────────────────────────────────────────────────────────────────
+
+export function useMandatoryCashSession() {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<LocalCacheSession | null>(null);
   const [version, setVersion] = useState(0);
