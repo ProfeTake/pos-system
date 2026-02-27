@@ -32,7 +32,7 @@ export function MainLayout({
   isCartRecentlyUpdated = false,
 }: MainLayoutProps) {
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col notranslate" translate="no">
       <BackendStatus />
       <div className="flex-1 flex overflow-hidden">
         <SidebarProvider>
