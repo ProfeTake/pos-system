@@ -28,6 +28,7 @@ import {
 } from "../../ui/dialog";
 import {
   Search,
+  Scan,
   Package,
   Edit,
   AlertTriangle,
@@ -447,6 +448,20 @@ export function Inventory({
 
   // Scanner
   const [showScanner, setShowScanner] = useState(false);
+  const [isMobileOrTablet, setIsMobileOrTablet] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.innerWidth <= 1024;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleResize = () => {
+      setIsMobileOrTablet(window.innerWidth <= 1024);
+    };
+    window.addEventListener("resize", handleResize);
+    handleResize();
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const lookupProductByBarcode = async (
     raw: string
@@ -673,6 +688,11 @@ export function Inventory({
               <Button variant="outline" onClick={() => setShowAddProduct(true)}>
                 Agregar producto
               </Button>
+              {isMobileOrTablet && (
+                <Button variant="outline" onClick={() => setShowScanner(true)}>
+                  <Scan className="size-4 mr-1" /> Escanear código
+                </Button>
+              )}
             </>
           )}
           {viewMode === "import" && (
@@ -1493,6 +1513,7 @@ export function Inventory({
         isVisible={showScanner}
         onClose={() => setShowScanner(false)}
         context="inventory"
+        scanEngine="quagga"
         onBarcodeForInventory={async (barcode) => {
           const code = (barcode || "").trim();
           const found = await lookupProductByBarcode(code);
@@ -1505,7 +1526,7 @@ export function Inventory({
             }
           } else {
             if (found) {
-              toast.error(`El producto "${found.name}" ya está registrado`);
+              toast.info(`Producto encontrado: "${found.name}"`);
             } else {
               setShowAddProduct(true);
               setNewProduct((p) => ({ ...p, BarCode: code }));

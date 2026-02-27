@@ -30,6 +30,7 @@ interface BarcodeScannerProps {
   onClose: () => void;
   context: "cart" | "inventory";
   onBarcodeForInventory?: (barcode: string) => void;
+  scanEngine?: "auto" | "quagga";
 }
 
 export function BarcodeScanner({
@@ -39,6 +40,7 @@ export function BarcodeScanner({
   onClose,
   context,
   onBarcodeForInventory,
+  scanEngine = "auto",
 }: BarcodeScannerProps) {
   const [barcodeInput, setBarcodeInput] = useState("");
   const [searchResults, setSearchResults] = useState<Product[]>([]);
@@ -378,8 +380,11 @@ export function BarcodeScanner({
       audio: false,
     };
 
+    const shouldUseNativeDetector =
+      scanEngine !== "quagga" && supportsBarcodeDetector;
+
     // Ruta 1: API nativa BarcodeDetector
-    if (supportsBarcodeDetector) {
+    if (shouldUseNativeDetector) {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
       if (videoRef.current) {
@@ -459,12 +464,14 @@ export function BarcodeScanner({
       };
       Q.onDetected(onDetected);
 
-      // Iniciar ZXing como lector paralelo para otros formatos si está disponible
-      try {
-        await startZxing();
-        // ZXing entrega resultados vía callback en startZxing; reusar handleDecoded
-        zxingOnResult = (code: string) => handleDecoded(code);
-      } catch { }
+      // Iniciar ZXing como lector paralelo para otros formatos solo en modo auto
+      if (scanEngine !== "quagga") {
+        try {
+          await startZxing();
+          // ZXing entrega resultados vía callback en startZxing; reusar handleDecoded
+          zxingOnResult = (code: string) => handleDecoded(code);
+        } catch { }
+      }
     } catch (e: any) {
       setCameraError(
         e?.message ||
