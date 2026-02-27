@@ -1,4 +1,24 @@
-import { useState, useEffect, useRef } from "react";
+/**
+ * BarcodeScanner.tsx — Escáner de códigos de barra
+ *
+ * Componente modal que permite escanear códigos de barra usando la cámara del
+ * dispositivo o ingresándolos manualmente. Soporta dos motores de detección:
+ *
+ *   1. BarcodeDetector (API nativa del navegador, disponible en Chrome/Edge)
+ *   2. QuaggaJS (librería externa cargada desde CDN, fallback universal)
+ *
+ * Funcionalidades principales:
+ *   - Vista de cámara en tiempo real con línea de escaneo animada
+ *   - Feedback visual del código detectado antes de aceptarlo
+ *   - Normalización automática de códigos: UPC-A (12 dígitos) → EAN-13 (13 dígitos)
+ *   - Validación de checksum para evitar falsos positivos
+ *   - Algoritmo de consenso anti-rebote (requiere 2+ lecturas consistentes)
+ *   - Búsqueda local y remota de productos
+ *   - Soporte para contexto "carrito" e "inventario"
+ *   - Detección de promociones con prefijo "PROMO-"
+ */
+
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import {
@@ -15,23 +35,126 @@ import {
   Scan,
   Plus,
   CheckCircle,
-  AlertCircle,
   X,
   Copy,
+  Camera,
+  CameraOff,
 } from "lucide-react";
 import { Product } from "../../types";
 import { toast } from "sonner";
 import { apiFetchJSON } from "../../lib/api";
+import {
+  normalizeBarcode as normalizarCodigo,
+  type BarcodeFormat,
+} from "../../utils/barcode";
+
+// ============================================================
+// Tipos y constantes
+// ============================================================
 
 interface BarcodeScannerProps {
+  /** Lista de productos en memoria para búsqueda local */
   products: Product[];
+  /** Callback para agregar producto al carrito (contexto "cart") */
   onAddToCart: (product: Product, quantity: number) => void;
+  /** Controla la visibilidad del modal */
   isVisible: boolean;
+  /** Callback para cerrar el modal */
   onClose: () => void;
+  /** Contexto de uso: "cart" agrega al carrito, "inventory" pasa código al inventario */
   context: "cart" | "inventory";
+  /** Callback cuando se escanea un código en contexto inventario */
   onBarcodeForInventory?: (barcode: string) => void;
-  scanEngine?: "auto" | "quagga";
+  /**
+   * Motor de escaneo a utilizar:
+   * - "native": API nativa BarcodeDetector (Chrome/Edge). Si no está disponible, usa QuaggaJS.
+   * - "quagga": Fuerza el uso de QuaggaJS (más consistente cross-browser).
+   * Por defecto: "quagga"
+   */
+  scanEngine?: "native" | "quagga";
 }
+
+/** Entrada del buffer de detecciones para el algoritmo de consenso */
+interface DeteccionBuffer {
+  codigo: string;
+  formato: BarcodeFormat;
+  timestamp: number;
+}
+
+/**
+ * Verifica si el dispositivo es móvil o tablet basado en user-agent y ancho de pantalla.
+ */
+const esDispositivoMovil = (): boolean =>
+  typeof navigator !== "undefined" &&
+  (/Android|iPhone|iPad|iPod|Windows Phone/i.test(navigator.userAgent) ||
+    (typeof window !== "undefined" && window.innerWidth < 768));
+
+/** URL del CDN de QuaggaJS */
+const QUAGGA_CDN_URL =
+  "https://unpkg.com/@ericblade/quagga2@1.2.6/dist/quagga.min.js";
+
+/** Formatos soportados por BarcodeDetector nativo */
+const FORMATOS_NATIVOS = [
+  "ean_13",
+  "ean_8",
+  "code_128",
+  "code_39",
+  "upc_a",
+  "upc_e",
+] as const;
+
+/** Lectores configurados para QuaggaJS */
+const QUAGGA_READERS = [
+  "ean_reader",
+  "ean_8_reader",
+  "code_128_reader",
+  "code_39_reader",
+  "upc_reader",
+  "upc_e_reader",
+];
+
+// ============================================================
+// Estilos CSS del escáner (animaciones y overlays)
+// ============================================================
+
+const SCANNER_STYLES = `
+  /* Animaciones del modal */
+  @keyframes modalFadeIn { from { opacity: 0 } to { opacity: 1 } }
+  @keyframes modalFadeOut { from { opacity: 1 } to { opacity: 0 } }
+  @keyframes modalScaleIn { from { opacity:0; transform: scale(.96) } to { opacity:1; transform: scale(1) } }
+  @keyframes modalScaleOut { from { opacity:1; transform: scale(1) } to { opacity:0; transform: scale(.96) } }
+
+  /* Animaciones de contenido */
+  @keyframes slideDownFade { from { opacity:0; transform: translateY(-6px) } to { opacity:1; transform: translateY(0) } }
+  @keyframes fadeInUp { from { opacity:0; transform: translateY(6px) } to { opacity:1; transform: translateY(0) } }
+  @keyframes slideUpFadeOut { from { opacity:1; transform: translateY(0) } to { opacity:0; transform: translateY(-4px) } }
+
+  /* Línea de escaneo animada (roja, se mueve verticalmente) */
+  @keyframes scanLine {
+    0%, 100% { top: 10%; }
+    50% { top: 85%; }
+  }
+
+  /* Fade in para el código detectado */
+  @keyframes codeFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Forzar que el video/canvas inyectado por QuaggaJS llene el contenedor */
+  .quagga-viewport video,
+  .quagga-viewport canvas {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+  }
+`;
+
+// ============================================================
+// Componente principal
+// ============================================================
 
 export function BarcodeScanner({
   products,
@@ -40,73 +163,77 @@ export function BarcodeScanner({
   onClose,
   context,
   onBarcodeForInventory,
-  scanEngine = "auto",
+  scanEngine = "quagga",
 }: BarcodeScannerProps) {
+  // === Estado de UI ===
   const [barcodeInput, setBarcodeInput] = useState("");
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [lastScanned, setLastScanned] = useState<Product | null>(null);
   const [quantity, setQuantity] = useState(1);
-  const inputRef = useRef<HTMLInputElement>(null);
   const [isExiting, setIsExiting] = useState(false);
-  const [lastScannedFade, setLastScannedFade] = useState(false); // controla animación de salida del banner "Último agregado"
-  // Cámara (móvil)
+  const [shouldRender, setShouldRender] = useState(isVisible);
+  const [lastScannedFade, setLastScannedFade] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // === Estado de cámara ===
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
-  const [usingCamera, setUsingCamera] = useState(false);
-  const [cameraError, setCameraError] = useState<string | null>(null);
-  const supportsBarcodeDetector =
-    typeof window !== "undefined" && (window as any).BarcodeDetector;
   const quaggaContainerRef = useRef<HTMLDivElement | null>(null);
+  const [usingCamera, setUsingCamera] = useState(false);
   const [usingQuagga, setUsingQuagga] = useState(false);
-  const zxingReaderRef = useRef<any>(null);
-  const zxingActiveRef = useRef<boolean>(false);
-  // Consenso de detección y control antirrebote
-  const detectionBufferRef = useRef<Array<{ code: string; ts: number }>>([]);
-  const scanningLockedRef = useRef<boolean>(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+
+  // Detectar soporte nativo de BarcodeDetector
+  const supportsBarcodeDetector =
+    typeof window !== "undefined" && !!(window as any).BarcodeDetector;
+
+  // === Feedback visual en tiempo real ===
+  /** Código que se está detectando en este momento (antes de aceptar por consenso) */
+  const [codigoDetectado, setCodigoDetectado] = useState<string | null>(null);
+  /** Formato del código detectado (EAN-13, UPC-A, etc.) */
+  const [formatoDetectado, setFormatoDetectado] =
+    useState<BarcodeFormat | null>(null);
+
+  // === Consenso de detección y control anti-rebote ===
+  const detectionBufferRef = useRef<DeteccionBuffer[]>([]);
+  const scanningLockedRef = useRef(false);
   const lastAcceptedCodeRef = useRef<string | null>(null);
-  const isMobileDevice = () =>
-    typeof navigator !== "undefined" &&
-    (/Android|iPhone|iPad|iPod|Windows Phone/i.test(navigator.userAgent) ||
-      (typeof window !== "undefined" && window.innerWidth < 768));
 
-  // Cuando la prop isVisible pasa a false desde fuera, dejamos que la animación de salida controle desmontaje
-  const [shouldRender, setShouldRender] = useState(isVisible);
+  // ============================================================
+  // Efectos del ciclo de vida
+  // ============================================================
 
+  /** Controla montaje/desmontaje con animación al cambiar isVisible */
   useEffect(() => {
     if (isVisible) {
       setIsExiting(false);
       setShouldRender(true);
-      // Autoiniciar cámara en móvil para inventario (si soportado)
-      if (context === "inventory" && isMobileDevice()) {
-        startCamera().catch((e) =>
+      // Auto-iniciar cámara en móvil para inventario
+      if (context === "inventory" && esDispositivoMovil()) {
+        iniciarCamara().catch((e) =>
           setCameraError(e?.message || "No se pudo iniciar la cámara")
         );
       }
     } else if (!isVisible && shouldRender) {
-      // dispara animación de salida
       setIsExiting(true);
-      const timeout = setTimeout(() => {
-        setShouldRender(false);
-      }, 220); // duración > a la animación de salida
-      // Detener cámara al cerrar
-      stopCamera();
+      const timeout = setTimeout(() => setShouldRender(false), 220);
+      detenerCamara();
       return () => clearTimeout(timeout);
     }
   }, [isVisible, shouldRender]);
-  // Ya no necesitamos ref para detectar click fuera; usaremos currentTarget === target
 
+  /** Auto-focus en el input al abrir */
   useEffect(() => {
     if (isVisible && inputRef.current) {
       inputRef.current.focus();
     }
   }, [isVisible]);
 
-  // Controlar duración y fadeout del mensaje de último agregado (~3s total)
+  /** Controla la animación de fadeout del banner "Último agregado" (~3s total) */
   useEffect(() => {
     if (!lastScanned) return;
-    setLastScannedFade(false); // reiniciar fade
-    // Iniciar fade a los 2600ms, limpiar a los 3000ms
+    setLastScannedFade(false);
     const fadeTimer = setTimeout(() => setLastScannedFade(true), 2600);
     const clearTimer = setTimeout(() => {
       setLastScanned(null);
@@ -118,105 +245,120 @@ export function BarcodeScanner({
     };
   }, [lastScanned]);
 
-  useEffect(() => {
-    if (isVisible && inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [isVisible]);
+  // ============================================================
+  // Búsqueda y manejo de productos
+  // ============================================================
 
-  // Filtro local multi-campo (nombre, categoría, código de barra)
-  const filterLocalProducts = (query: string) => {
-    const term = query.trim().toLowerCase();
-    if (!term) {
-      setSearchResults([]);
-      return;
-    }
-    const results = products.filter((p) => {
-      if (p.estado === "DESHABILITADO") return false; // excluir deshabilitados
-      const name = p.name?.toLowerCase() || "";
-      const cat = p.category?.toLowerCase() || "";
-      const code = p.barCode?.toLowerCase() || "";
-      return name.includes(term) || cat.includes(term) || code.includes(term);
-    });
-    setSearchResults(results);
-  };
+  /**
+   * Filtra productos locales por nombre, categoría o código de barra.
+   * Excluye productos deshabilitados.
+   */
+  const filtrarProductosLocales = useCallback(
+    (query: string) => {
+      const term = query.trim().toLowerCase();
+      if (!term) {
+        setSearchResults([]);
+        return;
+      }
+      const results = products.filter((p) => {
+        if (p.estado === "DESHABILITADO") return false;
+        const name = p.name?.toLowerCase() || "";
+        const cat = p.category?.toLowerCase() || "";
+        const code = p.barCode?.toLowerCase() || "";
+        return (
+          name.includes(term) || cat.includes(term) || code.includes(term)
+        );
+      });
+      setSearchResults(results);
+    },
+    [products]
+  );
 
+  /**
+   * Maneja cambios en el input de búsqueda.
+   * Si el texto tiene ≥6 caracteres, intenta buscar coincidencia exacta local
+   * y si no la encuentra, hace lookup remoto al backend.
+   */
   const handleInputChange = (value: string) => {
     setBarcodeInput(value);
-    filterLocalProducts(value);
+    filtrarProductosLocales(value);
 
-    // Detectar escaneo completo (threshold mínimo de longitud para considerar código exacto)
+    // Umbral mínimo para considerar un código de barras completo
     if (value.length >= 6) {
-      const val = String(value || "").trim();
+      const val = value.trim();
+
+      // Buscar coincidencia exacta local
       const exactMatch = products.find(
-        (product) => product.barCode === val && product.estado !== "DESHABILITADO"
+        (p) => p.barCode === val && p.estado !== "DESHABILITADO"
       );
       if (exactMatch) {
         if (context === "cart") {
-          handleProductFound(exactMatch);
-          setBarcodeInput("");
-          setSearchResults([]);
-        } else if (context === "inventory") {
+          manejarProductoEncontrado(exactMatch);
+        } else {
           setLastScanned(exactMatch);
-          setBarcodeInput("");
-          setSearchResults([]);
         }
+        setBarcodeInput("");
+        setSearchResults([]);
         return;
       }
 
-      // Lookup remoto en backend si no hay coincidencia local
-      (async () => {
-        try {
-          const foundProduct = await apiFetchJSON<Product>(
-            `/api/products/by-barcode/${encodeURIComponent(val)}`
-          );
-          if (foundProduct) {
-            if (context === "cart") {
-              handleProductFound(foundProduct);
-              setBarcodeInput("");
-              setSearchResults([]);
-            } else {
-              setLastScanned(foundProduct);
-              setBarcodeInput("");
-              setSearchResults([]);
-              toast.info(
-                "Producto encontrado en backend (no estaba en memoria)"
-              );
-            }
-            return;
-          }
-        } catch (err: any) {
-          // 404 -> no encontrado
-          if (err?.status === 404) {
-            if (context === "inventory" && onBarcodeForInventory) {
-              onBarcodeForInventory(val);
-              setBarcodeInput("");
-              setSearchResults([]);
-            } else {
-              toast.error("Producto no encontrado");
-            }
-          } else {
-            if (context === "inventory" && onBarcodeForInventory) {
-              onBarcodeForInventory(val);
-              setBarcodeInput("");
-              setSearchResults([]);
-            } else {
-              toast.error("No fue posible consultar el backend");
-            }
-          }
-        }
-      })();
+      // Si no hay coincidencia local, buscar en el backend
+      buscarEnBackend(val);
     }
   };
 
-  const handleProductFound = (product: Product) => {
+  /**
+   * Busca un producto por código de barras en el backend.
+   * Maneja los distintos escenarios: encontrado, no encontrado (404), error.
+   */
+  const buscarEnBackend = async (codigo: string) => {
+    try {
+      const producto = await apiFetchJSON<Product>(
+        `/api/products/by-barcode/${encodeURIComponent(codigo)}`
+      );
+      if (producto) {
+        if (context === "cart") {
+          manejarProductoEncontrado(producto);
+        } else {
+          setLastScanned(producto);
+          toast.info("Producto encontrado en backend (no estaba en memoria)");
+        }
+        setBarcodeInput("");
+        setSearchResults([]);
+      }
+    } catch (err: any) {
+      // 404 = producto no existe → pasar al flujo de inventario o mostrar error
+      if (err?.status === 404 || err?.message?.includes("404")) {
+        if (context === "inventory" && onBarcodeForInventory) {
+          onBarcodeForInventory(codigo);
+          setBarcodeInput("");
+          setSearchResults([]);
+        } else {
+          toast.error("Producto no encontrado");
+        }
+      } else {
+        // Error de red u otro → intentar pasar al inventario como fallback
+        if (context === "inventory" && onBarcodeForInventory) {
+          onBarcodeForInventory(codigo);
+          setBarcodeInput("");
+          setSearchResults([]);
+        } else {
+          toast.error("No fue posible consultar el backend");
+        }
+      }
+    }
+  };
+
+  /**
+   * Procesa un producto encontrado: valida stock y lo agrega al carrito.
+   */
+  const manejarProductoEncontrado = (product: Product) => {
     setLastScanned(product);
 
     if (product.stock <= 0) {
       toast.error(`${product.name} está agotado`);
       return;
     }
-
     if (quantity > product.stock) {
       toast.error(
         `Stock insuficiente. Solo quedan ${product.stock} unidades de ${product.name}`
@@ -226,28 +368,33 @@ export function BarcodeScanner({
 
     onAddToCart(product, quantity);
     setQuantity(1);
-    // Notificación reemplazada por indicador en Sidebar.
   };
 
-  // Flujo común cuando se detecta un código desde cualquier motor
-  const onCodeDetected = async (code: string) => {
-    const val = String(code || "").trim();
-    await writeCodeToInputAndClipboard(val);
+  // ============================================================
+  // Procesamiento de código detectado por cámara
+  // ============================================================
 
-    // Check if it's a promotion code (starts with PROMO-)
-    if (code.toUpperCase().startsWith("PROMO-")) {
+  /**
+   * Flujo final cuando un código es aceptado (por consenso o entrada manual).
+   * Maneja promociones (PROMO-*), inventario y carrito.
+   */
+  const procesarCodigoFinal = async (codigo: string) => {
+    const val = codigo.trim();
+    await copiarCodigoAlPortapapeles(val);
+
+    // Verificar si es un código de promoción (prefijo PROMO-)
+    if (val.toUpperCase().startsWith("PROMO-")) {
       try {
-        const { promotionsService } = await import("../../services/promotions.service");
-        const promotion = await promotionsService.getByBarcode(code);
-
+        const { promotionsService } = await import(
+          "../../services/promotions.service"
+        );
+        const promotion = await promotionsService.getByBarcode(val);
         if (promotion) {
-          stopCamera();
+          detenerCamara();
           toast.success(`Promoción detectada: ${promotion.name}`);
-
-          // TODO: Apply promotion to cart
-          // For now, just show a message
-          toast.info(`Aplica: ${promotion.description || "Descuento especial"}`);
-
+          toast.info(
+            `Aplica: ${promotion.description || "Descuento especial"}`
+          );
           onClose();
           return;
         }
@@ -261,116 +408,148 @@ export function BarcodeScanner({
       }
     }
 
-    // Inventario: pasar a alta/edición
+    // Contexto inventario: pasar código al componente padre
     if (context === "inventory" && onBarcodeForInventory) {
-      stopCamera();
+      detenerCamara();
       onBarcodeForInventory(val);
       onClose();
       return;
     }
-    // Carrito: buscar producto y agregar
-    const found = products.find((p) => p.barCode === val) || products.find((p) => p.barCode === code);
+
+    // Contexto carrito: buscar producto y agregar
+    const found = products.find((p) => p.barCode === val);
     if (found) {
-      stopCamera();
-      handleProductFound(found);
+      detenerCamara();
+      manejarProductoEncontrado(found);
       onClose();
     } else {
       toast.error("Producto no encontrado");
     }
   };
 
-  // ==========================
-  // Utilidades de normalización/validación
-  // ==========================
-  const isNumeric = (s: string) => /^[0-9]+$/.test(s);
-  const ean13Check = (digits: string) => {
-    if (digits.length !== 13 || !isNumeric(digits)) return false;
-    const arr = digits.split("").map((d) => parseInt(d));
-    const sum = arr
-      .slice(0, 12)
-      .reduce((acc, d, idx) => acc + d * (idx % 2 === 0 ? 1 : 3), 0);
-    const check = (10 - (sum % 10)) % 10;
-    return check === arr[12];
-  };
-  const upcACheck = (digits: string) => {
-    if (digits.length !== 12 || !isNumeric(digits)) return false;
-    const arr = digits.split("").map((d) => parseInt(d));
-    // Índices 0..10 (11 dígitos), impares/pares según estándar UPC-A
-    const sumOdd = arr
-      .slice(0, 11)
-      .reduce((acc, d, idx) => acc + (idx % 2 === 0 ? d : 0), 0);
-    const sumEven = arr
-      .slice(0, 11)
-      .reduce((acc, d, idx) => acc + (idx % 2 === 1 ? d : 0), 0);
-    const total = sumOdd * 3 + sumEven;
-    const check = (10 - (total % 10)) % 10;
-    return check === arr[11];
-  };
-  const ean8Check = (digits: string) => {
-    if (digits.length !== 8 || !isNumeric(digits)) return false;
-    const arr = digits.split("").map((d) => parseInt(d));
-    const sum = arr
-      .slice(0, 7)
-      .reduce((acc, d, idx) => acc + d * (idx % 2 === 0 ? 3 : 1), 0);
-    const check = (10 - (sum % 10)) % 10;
-    return check === arr[7];
-  };
-  const normalizeBarcode = (raw: string) => {
-    // Normalización eliminada: devolver el código tal cual (trim)
-    return String(raw || "").trim();
-  };
+  // ============================================================
+  // Algoritmo de consenso anti-rebote
+  // ============================================================
 
-  // Escribir el código en el input de búsqueda y copiarlo al portapapeles
-  const writeCodeToInputAndClipboard = async (code: string) => {
-    try {
-      setBarcodeInput(code);
-      setSearchResults([]);
-      inputRef.current?.focus();
-      let copied = false;
-      try {
-        await navigator.clipboard.writeText(code);
-        copied = true;
-      } catch {
-        try {
-          const ta = document.createElement("textarea");
-          ta.value = code;
-          ta.style.position = "fixed";
-          ta.style.opacity = "0";
-          document.body.appendChild(ta);
-          ta.select();
-          document.execCommand("copy");
-          document.body.removeChild(ta);
-          copied = true;
-        } catch { }
+  /**
+   * Procesa cada detección individual de los motores de escaneo.
+   *
+   * 1. Normaliza el código usando las utilidades de barcode.ts
+   *    (valida checksum, convierte UPC-A → EAN-13)
+   * 2. Descarta códigos numéricos largos con checksum inválido (falsos positivos)
+   * 3. Actualiza el feedback visual en tiempo real
+   * 4. Agrega al buffer de consenso y evalúa si hay acuerdo:
+   *    - 2 lecturas consecutivas iguales en <500ms → acepta
+   *    - 3+ lecturas del mismo código en ventana de 800ms → acepta
+   */
+  const procesarDeteccion = (raw: string) => {
+    if (scanningLockedRef.current) return;
+
+    // Normalizar: valida checksum, detecta formato, convierte UPC-A → EAN-13
+    const { format, gtin13 } = normalizarCodigo(raw);
+
+    // Determinar el código normalizado a usar según el formato detectado
+    let codigoNormalizado: string;
+    if (gtin13) {
+      // EAN-13 válido o UPC-A convertido a EAN-13 (13 dígitos)
+      codigoNormalizado = gtin13;
+    } else if (format === "EAN-8") {
+      // EAN-8 válido: usar solo los dígitos limpios
+      codigoNormalizado = raw.replace(/\D/g, "");
+    } else if (format === "UNKNOWN") {
+      // Formato desconocido: puede ser CODE-128/CODE-39 alfanumérico o basura
+      const soloDigitos = raw.replace(/\D/g, "");
+      if (/^\d+$/.test(soloDigitos) && soloDigitos.length >= 8) {
+        // Es numérico largo pero con checksum inválido → falso positivo, descartar
+        return;
       }
-      if (copied) toast.success(`Código copiado: ${code}`);
-      else
-        toast.message(`Código: ${code}`, {
-          description:
-            "No se pudo copiar automáticamente. Puedes copiarlo manualmente.",
-        });
-    } catch { }
-  };
-
-  const handleCopyCurrent = async () => {
-    const code = barcodeInput.trim();
-    if (!code) {
-      toast.error("No hay código para copiar");
-      return;
+      // Códigos alfanuméricos (CODE-128, CODE-39, PROMO-*) se aceptan tal cual
+      codigoNormalizado = raw.trim();
+    } else {
+      codigoNormalizado = raw.trim();
     }
-    await writeCodeToInputAndClipboard(code);
+
+    if (!codigoNormalizado) return;
+
+    // Actualizar feedback visual en tiempo real
+    setCodigoDetectado(codigoNormalizado);
+    setFormatoDetectado(format);
+
+    // Agregar al buffer de consenso
+    const now = Date.now();
+    const buf = detectionBufferRef.current;
+    buf.push({ codigo: codigoNormalizado, formato: format, timestamp: now });
+
+    // Limpiar entradas fuera de la ventana de 800ms
+    while (buf.length && now - buf[0].timestamp > 800) buf.shift();
+
+    // Criterio 1: Dos lecturas consecutivas iguales dentro de 500ms
+    if (buf.length >= 2) {
+      const ultima = buf[buf.length - 1];
+      const penultima = buf[buf.length - 2];
+      if (
+        ultima.codigo === penultima.codigo &&
+        ultima.timestamp - penultima.timestamp <= 500
+      ) {
+        aceptarCodigoConsenso(ultima.codigo);
+        return;
+      }
+    }
+
+    // Criterio 2: 3+ apariciones del mismo código en ventana de 800ms
+    const conteo = new Map<string, number>();
+    for (const item of buf) {
+      conteo.set(item.codigo, (conteo.get(item.codigo) || 0) + 1);
+    }
+    for (const [code, cnt] of conteo) {
+      if (cnt >= 3) {
+        aceptarCodigoConsenso(code);
+        return;
+      }
+    }
   };
 
-  const startCamera = async () => {
-    // Solo usar cámara si existe getUserMedia
+  /**
+   * Acepta un código una vez que el algoritmo de consenso lo confirma.
+   * Bloquea el escaneo, detiene la cámara y procesa el código.
+   */
+  const aceptarCodigoConsenso = async (codigo: string) => {
+    if (scanningLockedRef.current) return;
+    if (lastAcceptedCodeRef.current === codigo) return;
+
+    scanningLockedRef.current = true;
+    lastAcceptedCodeRef.current = codigo;
+    detenerCamara();
+    await procesarCodigoFinal(codigo);
+  };
+
+  // ============================================================
+  // Control de cámara
+  // ============================================================
+
+  /**
+   * Inicia la cámara y el motor de detección seleccionado.
+   * Si scanEngine === "native" y BarcodeDetector está disponible, lo usa.
+   * En cualquier otro caso, usa QuaggaJS como motor principal.
+   */
+  const iniciarCamara = async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraError(
         "La cámara no está disponible en este dispositivo/navegador"
       );
       return;
     }
+
     setCameraError(null);
-    stopCamera();
+    detenerCamara();
+
+    // Resetear estado de detección para nueva sesión de escaneo
+    setCodigoDetectado(null);
+    setFormatoDetectado(null);
+    detectionBufferRef.current = [];
+    scanningLockedRef.current = false;
+    lastAcceptedCodeRef.current = null;
+
     const constraints: MediaStreamConstraints = {
       video: {
         facingMode: { ideal: "environment" },
@@ -380,41 +559,90 @@ export function BarcodeScanner({
       audio: false,
     };
 
-    const shouldUseNativeDetector =
-      scanEngine !== "quagga" && supportsBarcodeDetector;
+    const usarNativo = scanEngine === "native" && supportsBarcodeDetector;
 
-    // Ruta 1: API nativa BarcodeDetector
-    if (shouldUseNativeDetector) {
+    if (usarNativo) {
+      // --- Ruta 1: API nativa BarcodeDetector (Chrome/Edge) ---
+      await iniciarConDetectorNativo(constraints);
+    } else {
+      // --- Ruta 2: QuaggaJS (predeterminado, más compatible cross-browser) ---
+      await iniciarConQuagga();
+    }
+  };
+
+  /**
+   * Inicia cámara con la API nativa BarcodeDetector.
+   * Si falla, hace fallback automático a QuaggaJS.
+   */
+  const iniciarConDetectorNativo = async (
+    constraints: MediaStreamConstraints
+  ) => {
+    try {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         try {
           await videoRef.current.play();
-        } catch { }
+        } catch {
+          /* ignorar error autoplay */
+        }
       }
       setUsingCamera(true);
-      // Iniciar detector nativo y ZXing en paralelo para máxima compatibilidad
-      detectWithBarcodeDetector();
-      try {
-        const track = stream.getVideoTracks()[0];
-        const devId =
-          (track.getSettings && track.getSettings().deviceId) || undefined;
-        await startZxing(devId as any);
-        zxingOnResult = async (code: string) => {
-          handleDetectionCandidate(code);
-        };
-      } catch { }
-      return;
+      iniciarBucleDeteccionNativa();
+    } catch (e: any) {
+      // Si falla el detector nativo, intentar con QuaggaJS como fallback
+      console.warn(
+        "BarcodeDetector no disponible, usando QuaggaJS como fallback:",
+        e
+      );
+      await iniciarConQuagga();
     }
+  };
 
-    // Ruta 2: Quagga2 (fallback para desktop navegadores sin BarcodeDetector, ej. Firefox)
+  /**
+   * Bucle de detección usando BarcodeDetector nativo (requestAnimationFrame).
+   * Lee cada frame del video y busca códigos de barras.
+   */
+  const iniciarBucleDeteccionNativa = async () => {
     try {
-      await loadQuaggaScript();
+      const Detector = (window as any).BarcodeDetector;
+      const detector = new Detector({ formats: [...FORMATOS_NATIVOS] });
+
+      const loop = async () => {
+        if (!videoRef.current) return;
+        try {
+          const codes = await detector.detect(videoRef.current);
+          if (codes?.length > 0) {
+            const code = String(codes[0].rawValue || "").trim();
+            if (code) procesarDeteccion(code);
+          }
+        } catch {
+          /* Ignorar error de frame individual */
+        }
+        rafRef.current = requestAnimationFrame(loop);
+      };
+
+      rafRef.current = requestAnimationFrame(loop);
+    } catch (e: any) {
+      setCameraError(e?.message || "No se pudo iniciar el detector de códigos");
+    }
+  };
+
+  /**
+   * Inicia cámara usando QuaggaJS como motor de detección.
+   * Carga la librería desde CDN si no está cargada y configura el stream de video.
+   */
+  const iniciarConQuagga = async () => {
+    try {
+      await cargarScriptQuagga();
       const Q = (window as any).Quagga;
-      if (!Q) throw new Error("Quagga no disponible");
+      if (!Q) throw new Error("QuaggaJS no disponible");
+
       setUsingQuagga(true);
       setUsingCamera(true);
+
       await new Promise<void>((resolve, reject) => {
         Q.init(
           {
@@ -430,16 +658,7 @@ export function BarcodeScanner({
             locator: { patchSize: "medium", halfSample: true },
             numOfWorkers: 2,
             frequency: 10,
-            decoder: {
-              readers: [
-                "ean_reader",
-                "ean_8_reader",
-                "code_128_reader",
-                "code_39_reader",
-                "upc_reader",
-                "upc_e_reader",
-              ],
-            },
+            decoder: { readers: QUAGGA_READERS },
           },
           (err: any) => {
             if (err) return reject(err);
@@ -449,274 +668,176 @@ export function BarcodeScanner({
         );
       });
 
-      const handleDecoded = async (code: string) => {
-        try {
-          handleDetectionCandidate(code);
-        } catch { }
-      };
-
-      const onDetected = (res: any) => {
-        try {
-          const code = String(res?.codeResult?.code || "").trim();
-          if (!code) return;
-          handleDecoded(code);
-        } catch { }
-      };
-      Q.onDetected(onDetected);
-
-      // Iniciar ZXing como lector paralelo para otros formatos solo en modo auto
-      if (scanEngine !== "quagga") {
-        try {
-          await startZxing();
-          // ZXing entrega resultados vía callback en startZxing; reusar handleDecoded
-          zxingOnResult = (code: string) => handleDecoded(code);
-        } catch { }
-      }
+      // Registrar callback de detección de QuaggaJS
+      Q.onDetected((res: any) => {
+        const code = String(res?.codeResult?.code || "").trim();
+        if (code) procesarDeteccion(code);
+      });
     } catch (e: any) {
       setCameraError(
         e?.message ||
-        "No fue posible iniciar el escáner. Usa lector USB o entrada manual."
+          "No fue posible iniciar el escáner. Usa lector USB o entrada manual."
       );
     }
   };
 
-  const stopCamera = () => {
+  /**
+   * Detiene todos los motores de cámara activos (nativo y QuaggaJS).
+   * Limpia streams, animation frames y estado visual.
+   */
+  const detenerCamara = () => {
+    // Detener bucle de requestAnimationFrame (detector nativo)
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
+
+    // Detener stream de media (tracks de video)
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     setUsingCamera(false);
-    // Detener Quagga si estaba activo
+
+    // Detener QuaggaJS si estaba activo
     try {
       const Q = (window as any).Quagga;
       if (Q && usingQuagga) {
         Q.stop();
-        Q.offDetected?.(() => { });
+        Q.offDetected?.(() => {});
       }
-    } catch { }
-    setUsingQuagga(false);
-    stopZxing();
-  };
-
-  const detectWithBarcodeDetector = async () => {
-    try {
-      const Detector = (window as any).BarcodeDetector;
-      const detector = new Detector({
-        // Restringir a 1D comunes para productos y reducir falsos positivos
-        formats: ["ean_13", "ean_8", "code_128", "code_39", "upc_a", "upc_e"],
-      });
-      const loop = async () => {
-        if (!videoRef.current) return;
-        try {
-          const codes = await detector.detect(videoRef.current);
-          if (codes && codes.length > 0) {
-            const value = codes[0].rawValue || codes[0].rawValue;
-            const code = String(value || "").trim();
-            if (code) handleDetectionCandidate(code);
-          }
-        } catch (e) {
-          // Ignorar error de frame
-        }
-        rafRef.current = requestAnimationFrame(loop);
-      };
-      rafRef.current = requestAnimationFrame(loop);
-    } catch (e: any) {
-      setCameraError(e?.message || "No se pudo iniciar el detector de códigos");
+    } catch {
+      /* ignorar error al detener QuaggaJS */
     }
+    setUsingQuagga(false);
+
+    // Limpiar feedback visual de detección
+    setCodigoDetectado(null);
+    setFormatoDetectado(null);
   };
 
-  // Carga dinámica de Quagga2 desde CDN (sin dependencia de build)
-  const loadQuaggaScript = (): Promise<void> => {
+  // ============================================================
+  // Carga dinámica de scripts desde CDN
+  // ============================================================
+
+  /** Carga QuaggaJS desde CDN (solo una vez, se reutiliza en llamadas posteriores) */
+  const cargarScriptQuagga = (): Promise<void> => {
     return new Promise((resolve, reject) => {
       const id = "quagga2-cdn-script";
       if (document.getElementById(id)) return resolve();
-      const s = document.createElement("script");
-      s.id = id;
-      s.src = "https://unpkg.com/@ericblade/quagga2@1.2.6/dist/quagga.min.js";
-      s.async = true;
-      s.onload = () => resolve();
-      s.onerror = () => reject(new Error("No se pudo cargar Quagga2"));
-      document.head.appendChild(s);
+      const script = document.createElement("script");
+      script.id = id;
+      script.src = QUAGGA_CDN_URL;
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("No se pudo cargar QuaggaJS"));
+      document.head.appendChild(script);
     });
   };
 
-  // ZXing: soporte QR y multi-formato (fallback)
-  let zxingOnResult: ((code: string) => void) | null = null;
-  const loadZxingScript = (): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const id = "zxing-umd-script";
-      if (document.getElementById(id)) return resolve();
-      const s = document.createElement("script");
-      s.id = id;
-      s.src = "https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js";
-      s.async = true;
-      s.onload = () => resolve();
-      s.onerror = () => reject(new Error("No se pudo cargar ZXing"));
-      document.head.appendChild(s);
-    });
-  };
+  // ============================================================
+  // Utilidades de portapapeles
+  // ============================================================
 
-  const startZxing = async (deviceId?: string) => {
+  /**
+   * Escribe el código en el input de búsqueda y lo copia al portapapeles.
+   */
+  const copiarCodigoAlPortapapeles = async (codigo: string) => {
     try {
-      await loadZxingScript();
-      const ZX = (window as any).ZXing;
-      if (!ZX || !ZX.BrowserMultiFormatReader) return;
-      // Limitar formatos a códigos 1D típicos de retail para reducir falsos positivos
-      let reader: any;
+      setBarcodeInput(codigo);
+      setSearchResults([]);
+      inputRef.current?.focus();
+
       try {
-        const hints = new ZX.Map();
-        hints.set(ZX.DecodeHintType.POSSIBLE_FORMATS, [
-          ZX.BarcodeFormat.EAN_13,
-          ZX.BarcodeFormat.EAN_8,
-          ZX.BarcodeFormat.UPC_A,
-          ZX.BarcodeFormat.UPC_E,
-          ZX.BarcodeFormat.CODE_128,
-          ZX.BarcodeFormat.CODE_39,
-        ]);
-        reader = new ZX.BrowserMultiFormatReader(hints, 500);
+        await navigator.clipboard.writeText(codigo);
+        toast.success(`Código copiado: ${codigo}`);
       } catch {
-        reader = new ZX.BrowserMultiFormatReader();
+        toast.message(`Código: ${codigo}`, {
+          description:
+            "No se pudo copiar automáticamente. Puedes copiarlo manualmente.",
+        });
       }
-      zxingReaderRef.current = reader;
-      zxingActiveRef.current = true;
-      await reader.decodeFromVideoDevice(
-        deviceId,
-        videoRef.current as HTMLVideoElement,
-        (result: any, err: any) => {
-          if (!zxingActiveRef.current) return;
-          try {
-            if (result) {
-              const text =
-                (typeof result.getText === "function" && result.getText()) ||
-                result?.text ||
-                String(result || "");
-              const code = String(text || "").trim();
-              if (code) {
-                zxingOnResult?.(code);
-              }
-            }
-          } catch { }
-        }
-      );
-    } catch { }
-  };
-
-  const stopZxing = () => {
-    try {
-      zxingActiveRef.current = false;
-      const r = zxingReaderRef.current;
-      if (r && typeof r.reset === "function") r.reset();
-    } catch { }
-    zxingReaderRef.current = null;
-    zxingOnResult = null;
-  };
-
-  // ==========================
-  // Consenso de detecciones (evita lecturas erráticas)
-  // ==========================
-  const handleDetectionCandidate = (raw: string) => {
-    if (scanningLockedRef.current) return;
-    const normalized = normalizeBarcode(raw);
-    const now = Date.now();
-    const buf = detectionBufferRef.current;
-    buf.push({ code: normalized, ts: now });
-    // limpiar fuera de ventana móvil (800ms)
-    while (buf.length && now - buf[0].ts > 800) buf.shift();
-
-    // 1) Dos lecturas consecutivas iguales dentro de 500ms
-    if (buf.length >= 2) {
-      const a = buf[buf.length - 1];
-      const b = buf[buf.length - 2];
-      if (a.code === b.code && a.ts - b.ts <= 500) {
-        acceptConsensusCode(a.code);
-        return;
-      }
-    }
-    // 2) Mayoría en ventana: 3+ apariciones dentro de 800ms
-    const counts = new Map<string, number>();
-    for (const item of buf)
-      counts.set(item.code, (counts.get(item.code) || 0) + 1);
-    for (const [code, cnt] of counts) {
-      if (cnt >= 3) {
-        acceptConsensusCode(code);
-        return;
-      }
+    } catch {
+      /* ignorar */
     }
   };
 
-  const acceptConsensusCode = async (code: string) => {
-    if (scanningLockedRef.current) return;
-    if (lastAcceptedCodeRef.current === code) return;
-    scanningLockedRef.current = true;
-    lastAcceptedCodeRef.current = code;
-    stopCamera();
-    await onCodeDetected(code);
+  /** Copia el código actual del input al portapapeles */
+  const handleCopyCurrent = async () => {
+    const code = barcodeInput.trim();
+    if (!code) {
+      toast.error("No hay código para copiar");
+      return;
+    }
+    await copiarCodigoAlPortapapeles(code);
   };
 
+  // ============================================================
+  // Manejo de teclado y limpieza
+  // ============================================================
+
+  /** Maneja Enter en el input: si hay un solo resultado lo selecciona */
   const handleEnterPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
+    if (e.key !== "Enter") return;
+    e.preventDefault();
 
-      if (searchResults.length === 1) {
-        handleProductFound(searchResults[0]);
-        setBarcodeInput("");
-        setSearchResults([]);
-      } else if (searchResults.length > 1) {
-        toast.error(
-          "Múltiples productos encontrados. Selecciona uno específico."
-        );
-      } else {
-        toast.error("Producto no encontrado");
-      }
+    if (searchResults.length === 1) {
+      manejarProductoEncontrado(searchResults[0]);
+      setBarcodeInput("");
+      setSearchResults([]);
+    } else if (searchResults.length > 1) {
+      toast.error("Múltiples productos encontrados. Selecciona uno.");
+    } else {
+      toast.error("Producto no encontrado");
     }
   };
 
-  const clearSearch = () => {
+  /** Limpia la búsqueda y reinicia el estado visual */
+  const limpiarBusqueda = () => {
     setBarcodeInput("");
     setSearchResults([]);
     setLastScanned(null);
     inputRef.current?.focus();
   };
 
+  // ============================================================
+  // Renderizado
+  // ============================================================
+
   if (!shouldRender) return null;
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm`}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
       style={{
-        animation: `${isExiting ? "modalFadeOut" : "modalFadeIn"
-          } 220ms ease-out`,
+        animation: `${isExiting ? "modalFadeOut" : "modalFadeIn"} 220ms ease-out`,
       }}
       onMouseDown={(e) => {
+        // Cerrar al hacer click fuera del contenido (en el overlay)
         if (e.target === e.currentTarget) {
-          // Cerrar al hacer click fuera del contenido
           e.preventDefault();
-          stopCamera();
+          detenerCamara();
           onClose();
         }
       }}
     >
       <Card
-        className="w-full max-w-sm max-h-[70vh] overflow-auto shadow-lg border border-border/60"
+        className="w-full max-w-sm max-h-[80vh] overflow-auto shadow-lg border border-border/60"
         style={{
-          animation: `${isExiting ? "modalScaleOut" : "modalScaleIn"
-            } 220ms cubic-bezier(.16,.84,.44,1)`,
+          animation: `${isExiting ? "modalScaleOut" : "modalScaleIn"} 220ms cubic-bezier(.16,.84,.44,1)`,
         }}
       >
+        {/* --- Encabezado --- */}
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Scan className="size-4" />
-                Escáner
+                Escáner de Código
               </CardTitle>
               <CardDescription className="text-xs">
-                Escanea o busca productos
+                Escanea o busca productos por código de barra
               </CardDescription>
             </div>
             <button
               onClick={() => {
-                stopCamera();
+                detenerCamara();
                 onClose();
               }}
               className="absolute top-3 right-3 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:ring-ring focus:outline-hidden"
@@ -728,47 +849,101 @@ export function BarcodeScanner({
         </CardHeader>
 
         <CardContent className="space-y-3 pt-0">
-          {/* Vista de cámara compacta */}
+          {/* --- Vista de cámara con feedback visual en tiempo real --- */}
           <div className="space-y-2">
-            <div className="rounded-md overflow-hidden bg-black relative h-32">
-              {/* Video para BarcodeDetector; Quagga renderiza su propio canvas/video en quaggaContainer */}
+            <div className="rounded-md overflow-hidden bg-black relative h-52">
+              {/* Video para BarcodeDetector nativo */}
               <video
                 ref={videoRef}
-                className={`w-full h-full object-cover ${usingQuagga ? "hidden" : ""
-                  }`}
+                className={`w-full h-full object-cover ${usingQuagga ? "hidden" : ""}`}
                 muted
                 playsInline
               />
+              {/* Contenedor donde QuaggaJS inyecta su propio video/canvas */}
               <div
                 ref={quaggaContainerRef}
-                className={`absolute inset-0 ${usingQuagga ? "block" : "hidden"
-                  }`}
+                className={`quagga-viewport absolute inset-0 ${usingQuagga ? "block" : "hidden"}`}
               />
+
+              {/* Placeholder cuando la cámara está inactiva */}
               {!usingCamera && (
-                <div className="absolute inset-0 grid place-items-center text-xs text-muted-foreground">
-                  Cámara inactiva
+                <div className="absolute inset-0 grid place-items-center text-xs text-muted-foreground bg-black/80">
+                  <div className="flex flex-col items-center gap-2">
+                    <CameraOff className="size-6 opacity-50" />
+                    <span>Cámara inactiva</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Línea de escaneo animada (visible solo con cámara activa) */}
+              {usingCamera && (
+                <div
+                  className="absolute left-2 right-2 h-0.5 bg-red-500/80 rounded-full shadow-[0_0_8px_rgba(239,68,68,0.6)]"
+                  style={{ animation: "scanLine 2s ease-in-out infinite" }}
+                />
+              )}
+
+              {/* Código detectado en tiempo real (overlay inferior) */}
+              {usingCamera && codigoDetectado && (
+                <div
+                  className="absolute bottom-0 left-0 right-0 bg-black/70 px-3 py-1.5 flex items-center justify-between gap-2"
+                  style={{ animation: "codeFadeIn 200ms ease-out" }}
+                >
+                  <span className="text-white text-sm font-mono truncate">
+                    {codigoDetectado}
+                  </span>
+                  {formatoDetectado && formatoDetectado !== "UNKNOWN" && (
+                    <Badge
+                      variant="secondary"
+                      className="text-[10px] px-1.5 py-0 shrink-0 bg-white/20 text-white border-0"
+                    >
+                      {formatoDetectado}
+                    </Badge>
+                  )}
                 </div>
               )}
             </div>
+
+            {/* Botones de control de cámara */}
             <div className="flex gap-2">
-              <Button size="sm" onClick={startCamera}>Usar cámara</Button>
+              <Button
+                size="sm"
+                onClick={iniciarCamara}
+                disabled={usingCamera}
+                className="gap-1.5"
+              >
+                <Camera className="size-3.5" />
+                {usingCamera ? "Escaneando..." : "Usar cámara"}
+              </Button>
               {usingCamera && (
-                <Button size="sm" variant="outline" onClick={stopCamera}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={detenerCamara}
+                  className="gap-1.5"
+                >
+                  <CameraOff className="size-3.5" />
                   Detener
                 </Button>
               )}
             </div>
+
+            {/* Error de cámara */}
             {cameraError && (
-              <div className="text-xs text-red-500">{cameraError}</div>
+              <div className="text-xs text-red-500 bg-red-50 rounded-md px-2 py-1.5">
+                {cameraError}
+              </div>
             )}
           </div>
 
-          {/* Input de búsqueda/escaneo */}
+          {/* --- Input de búsqueda/escaneo manual --- */}
           <div className="space-y-2">
-            <label className="text-sm text-muted-foreground">Código o Búsqueda</label>
+            <label className="text-sm text-muted-foreground">
+              Código o Búsqueda
+            </label>
             <div className="flex gap-2">
               <div className="relative flex-1">
-                <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 size-3 text-muted-foreground" />
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground" />
                 <Input
                   ref={inputRef}
                   type="text"
@@ -783,7 +958,7 @@ export function BarcodeScanner({
                   <button
                     type="button"
                     aria-label="Limpiar búsqueda"
-                    onClick={clearSearch}
+                    onClick={limpiarBusqueda}
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   >
                     <X className="size-3" />
@@ -802,21 +977,21 @@ export function BarcodeScanner({
                 }
                 className="w-16 h-8 text-sm"
               />
-              <Button size="sm" onClick={clearSearch} variant="outline">
+              <Button size="sm" onClick={limpiarBusqueda} variant="outline">
                 Limpiar
               </Button>
               <Button
                 size="sm"
                 onClick={handleCopyCurrent}
                 variant="secondary"
-                title="Copiar código"
+                title="Copiar código al portapapeles"
               >
                 <Copy className="size-3" />
               </Button>
             </div>
           </div>
 
-          {/* Último producto escaneado */}
+          {/* --- Banner del último producto escaneado/agregado --- */}
           {lastScanned && (
             <Alert
               className="border-green-200 bg-green-50 py-2"
@@ -834,7 +1009,7 @@ export function BarcodeScanner({
             </Alert>
           )}
 
-          {/* Resultados de búsqueda */}
+          {/* --- Lista de resultados de búsqueda --- */}
           {searchResults.length > 0 && (
             <div className="space-y-2">
               <h4 className="font-medium text-sm">
@@ -844,7 +1019,7 @@ export function BarcodeScanner({
                 {searchResults.map((product, idx) => (
                   <div
                     key={product.id}
-                    className="p-2 border rounded-md text-sm animate-fade-in-up"
+                    className="p-2 border rounded-md text-sm"
                     style={{
                       animation: `fadeInUp 250ms ease-out ${idx * 35}ms both`,
                     }}
@@ -855,7 +1030,10 @@ export function BarcodeScanner({
                           <span className="font-medium truncate text-xs">
                             {product.name}
                           </span>
-                          <Badge variant="secondary" className="text-[10px] px-1">
+                          <Badge
+                            variant="secondary"
+                            className="text-[10px] px-1"
+                          >
                             {product.category}
                           </Badge>
                         </div>
@@ -868,7 +1046,7 @@ export function BarcodeScanner({
                       </div>
                       <Button
                         size="sm"
-                        onClick={() => handleProductFound(product)}
+                        onClick={() => manejarProductoEncontrado(product)}
                         disabled={
                           product.stock <= 0 ||
                           product.estado === "DESHABILITADO"
@@ -886,16 +1064,9 @@ export function BarcodeScanner({
           )}
         </CardContent>
       </Card>
-      {/* Animaciones CSS inline (podrían moverse a un CSS global si prefieres) */}
-      <style>{`
-        @keyframes modalFadeIn { from { opacity: 0 } to { opacity: 1 } }
-        @keyframes modalFadeOut { from { opacity: 1 } to { opacity: 0 } }
-        @keyframes modalScaleIn { from { opacity:0; transform: scale(.96) } to { opacity:1; transform: scale(1) } }
-        @keyframes modalScaleOut { from { opacity:1; transform: scale(1) } to { opacity:0; transform: scale(.96) } }
-        @keyframes slideDownFade { from { opacity:0; transform: translateY(-6px) } to { opacity:1; transform: translateY(0) } }
-        @keyframes fadeInUp { from { opacity:0; transform: translateY(6px) } to { opacity:1; transform: translateY(0) } }
-        @keyframes slideUpFadeOut { from { opacity:1; transform: translateY(0) } to { opacity:0; transform: translateY(-4px) } }
-      `}</style>
+
+      {/* Estilos CSS del escáner */}
+      <style>{SCANNER_STYLES}</style>
     </div>
   );
 }
