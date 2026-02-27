@@ -166,7 +166,7 @@ function PosAppContent() {
     (p: Product) => p.estado !== "DESHABILITADO" && p.stock <= p.minStock
   );
 
-  // Seguimiento de notificaciones vistas (coincidir con LowStockNotifications)
+  // Seguimiento de notificaciones vistas
   const LS_KEY = "pos.lowstock.lastSeenSigs"; // firmas id:stock
   const lowSigs = lowStockProducts.map((p) => `${p.id}:${p.stock}`).sort();
   const [seenSigs, setSeenSigs] = useState<string[]>(() => {

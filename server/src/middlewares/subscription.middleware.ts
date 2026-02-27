@@ -7,7 +7,6 @@ import {
   canCreateProduct,
   canCreateUser,
   canCreateSale,
-  hasFeature,
 } from "../services/subscription.service";
 
 /**
@@ -127,38 +126,4 @@ export const checkSaleLimit = async (
   }
 };
 
-/**
- * Verifica si el tenant tiene acceso a una feature específica
- */
-export const requireFeature = (featureName: string) => {
-  return async (req: TenantRequest, res: Response, next: NextFunction) => {
-    try {
-      const isSingleTenant =
-        process.env.SINGLE_TENANT === "true" ||
-        process.env.TENANT_MODE === "single";
-      const subscriptionEnforcementDisabled =
-        process.env.SUBSCRIPTION_ENFORCEMENT === "false";
 
-      if (isSingleTenant || subscriptionEnforcementDisabled) {
-        return next();
-      }
-
-      const tenantSlug = req.tenantId || "default";
-      const hasAccess = await hasFeature(tenantSlug, featureName);
-
-      if (!hasAccess) {
-        return res.status(403).json({
-          error: "Feature no disponible",
-          message: `Tu plan actual no incluye la funcionalidad: ${featureName}`,
-          feature: featureName,
-          upgradeRequired: true,
-        });
-      }
-
-      next();
-    } catch (error) {
-      console.error("Error checking feature access:", error);
-      res.status(500).json({ error: "Error al verificar acceso a feature" });
-    }
-  };
-};

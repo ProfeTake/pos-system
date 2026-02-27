@@ -53,31 +53,7 @@ async function getUserPermissions(userId: number, userRole: string, roleId?: num
   return permissions;
 }
 
-/**
- * Middleware para cargar permisos del usuario autenticado
- */
-export const loadPermissions = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
-  if (!req.user) {
-    return next();
-  }
 
-  try {
-    const permissions = await getUserPermissions(
-      req.user.id,
-      req.user.role,
-      req.user.roleId
-    );
-    req.user.permissions = permissions;
-    next();
-  } catch (error) {
-    console.error("Error cargando permisos:", error);
-    next();
-  }
-};
 
 /**
  * Middleware para requerir permisos específicos
@@ -230,30 +206,7 @@ export function clearPermissionsCache(userId?: number) {
   }
 }
 
-/**
- * Middleware legacy para compatibilidad con código existente
- * Usa el sistema de roles básico
- */
-export const requireRole = (allowedRoles: string[]) => {
-  return (req: AuthRequest, res: Response, next: NextFunction) => {
-    if (!req.user) {
-      return res.status(401).json({ message: "No autenticado" });
-    }
 
-    // Superadmin siempre tiene acceso
-    if (req.user.role === "superadmin") {
-      return next();
-    }
-
-    if (!allowedRoles.includes(req.user.role)) {
-      return res
-        .status(403)
-        .json({ message: "No tienes permisos para esta acción" });
-    }
-
-    next();
-  };
-};
 
 // Re-exportar permisos para uso conveniente
 export { PERMISSIONS, PREDEFINED_ROLES };

@@ -1,10 +1,7 @@
 // Declaraciones de tipos para módulos externos que no tienen tipos disponibles
 // o para evitar errores de importación
 
-declare module "better-sqlite3" {
-  const Database: any;
-  export default Database;
-}
+
 
 declare module 'ioredis' {
   interface RedisOptions {
