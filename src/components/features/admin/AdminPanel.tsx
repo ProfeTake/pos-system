@@ -740,9 +740,9 @@ export default function AdminPanel({
     <div className="space-y-6">
       <Tabs defaultValue="executive" className="w-full">
         {/* Tabs con mini-gráficos — carrusel horizontal en móvil */}
-        <TabsList className="inline-flex h-auto gap-1 p-1 w-full overflow-x-auto overflow-y-hidden scrollbar-hide snap-x snap-mandatory md:flex-wrap">
+        <TabsList className="inline-flex h-auto gap-1 py-1 w-full overflow-x-auto overflow-y-hidden scrollbar-hide snap-x snap-mandatory md:flex-wrap md:px-1">
           {/* Ejecutivo - Sparkline de ventas */}
-          <TabsTrigger value="executive" className="flex-none md:flex-1 flex items-center justify-center gap-2 px-3 py-2 min-h-[52px] min-w-[120px] snap-start">
+          <TabsTrigger value="executive" className="flex-none md:flex-1 flex items-center justify-center gap-2 px-3 py-2 min-h-[52px] min-w-[120px] snap-start ml-1 md:ml-0">
             <div className="flex items-center gap-2">
               <SalesSparkline data={salesSparkData} />
               <div className="flex flex-col items-start">
@@ -809,7 +809,7 @@ export default function AdminPanel({
           </TabsTrigger>
 
           {/* Configuración - Icono simple */}
-          <TabsTrigger value="settings" className="flex-none md:flex-1 flex items-center justify-center gap-2 px-3 py-2 min-h-[52px] min-w-[120px] snap-start">
+          <TabsTrigger value="settings" className="flex-none md:flex-1 flex items-center justify-center gap-2 px-3 py-2 min-h-[52px] min-w-[120px] snap-start mr-1 md:mr-0">
             <div className="flex items-center gap-2">
               <div className="w-6 h-5 flex items-center justify-center">
                 <SettingsIcon className="w-4 h-4 text-muted-foreground" />
