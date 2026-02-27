@@ -306,3 +306,12 @@ html {
 }
 
 /* Auth component helpers live in styles/auth.css to avoid @apply warnings */
+
+/* Ocultar scrollbar nativa — usado en carruseles móviles */
+.scrollbar-hide {
+  -ms-overflow-style: none;   /* IE/Edge */
+  scrollbar-width: none;      /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;              /* Chrome/Safari/Opera */
+}
