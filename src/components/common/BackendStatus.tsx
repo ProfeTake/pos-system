@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertCircle, RefreshCw } from "lucide-react";
 import { Button } from "../ui/button";
 import { API_BASE } from "../../lib/api";
@@ -6,6 +6,8 @@ import { API_BASE } from "../../lib/api";
 export function BackendStatus() {
     const [isOnline, setIsOnline] = useState(true);
     const [checking, setChecking] = useState(false);
+    // Ref para acceder al estado actual desde el interval/listener sin recrealos
+    const isOnlineRef = useRef(true);
 
     const checkHealth = async () => {
         setChecking(true);
@@ -14,12 +16,11 @@ export function BackendStatus() {
                 method: "GET",
                 headers: { "Cache-Control": "no-cache" },
             });
-            if (res.ok) {
-                setIsOnline(true);
-            } else {
-                setIsOnline(false);
-            }
+            const online = res.ok;
+            isOnlineRef.current = online;
+            setIsOnline(online);
         } catch {
+            isOnlineRef.current = false;
             setIsOnline(false);
         } finally {
             setChecking(false);
@@ -29,24 +30,36 @@ export function BackendStatus() {
     useEffect(() => {
         // Escuchar eventos desde api.ts
         const handleStatusChange = (e: CustomEvent) => {
-            setIsOnline(e.detail.online);
+            const online: boolean = e.detail.online;
+            isOnlineRef.current = online;
+            setIsOnline(online);
+        };
+
+        // Recuperación inmediata cuando el browser detecta red (Wi-Fi/datos)
+        const handleNetworkOnline = () => {
+            checkHealth();
         };
 
         window.addEventListener("backend:status" as any, handleStatusChange);
+        window.addEventListener("online", handleNetworkOnline);
 
-        // Polling inicial y periódico si está caído
+        // Health check inicial
         checkHealth();
+
+        // Polling cada 5s solo cuando está caído — usa ref para evitar stale closure
         const interval = setInterval(() => {
-            if (!isOnline) {
+            if (!isOnlineRef.current) {
                 checkHealth();
             }
         }, 5000);
 
         return () => {
             window.removeEventListener("backend:status" as any, handleStatusChange);
+            window.removeEventListener("online", handleNetworkOnline);
             clearInterval(interval);
         };
-    }, [isOnline]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // efecto estable — usa isOnlineRef para leer estado actual
 
     if (isOnline) return null;
 

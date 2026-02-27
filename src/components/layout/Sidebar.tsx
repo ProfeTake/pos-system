@@ -30,6 +30,7 @@ import { Separator } from "../ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { useAuth } from "../../hooks/useAuth";
 import { ViewType } from "../../types";
+import { toast } from "sonner";
 
 interface SidebarProps {
   currentView: ViewType;
@@ -221,9 +222,16 @@ export function Sidebar({
                         closeMobileThen(() => navigate("/superadmin"));
                         return;
                       }
-                      if (!item.disabled) {
-                        closeMobileThen(() => onNavigate(item.id as ViewType));
+                      if (item.disabled) {
+                        // En móvil: cerrar el Sheet Y mostrar feedback (no hay cursor para señalizar)
+                        closeMobileThen(() => {
+                          toast.warning("Abre la caja registradora para acceder a esta sección", {
+                            duration: 3000,
+                          });
+                        });
+                        return;
                       }
+                      closeMobileThen(() => onNavigate(item.id as ViewType));
                     }}
                     isActive={
                       currentView === (item.id as any) &&

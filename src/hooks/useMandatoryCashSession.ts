@@ -23,7 +23,7 @@ let sseListeners: Set<() => void> = new Set();
 let sseConnecting = false;
 let sseReconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 let sseReconnectAttempts = 0;
-const SSE_MAX_RECONNECT_ATTEMPTS = 5;
+const SSE_MAX_RECONNECT_ATTEMPTS = 10; // Más intentos para redes móviles inestables
 const SSE_BASE_RECONNECT_DELAY = 5000; // 5 segundos base
 
 function connectSSE(onEvent: () => void) {
@@ -119,7 +119,36 @@ function disconnectSSE(onEvent: () => void) {
   }
 }
 
-export function useMandatoryCashSession() {
+// ── Recuperación automática del SSE en móvil ─────────────────────────────────
+// En dispositivos móviles el SSE se corta al poner la app en segundo plano
+// o al pasar por zonas sin señal. Estos listeners reconectan sin recargar.
+function handleSSENetworkRestore() {
+  // Si no hay conexión activa y hay listeners registrados, reconectar inmediatamente
+  if (sseListeners.size > 0 && globalEventSource === null && !sseConnecting) {
+    sseReconnectAttempts = 0; // Reset para tener el máximo de intentos disponibles
+    if (sseReconnectTimeout) {
+      clearTimeout(sseReconnectTimeout);
+      sseReconnectTimeout = null;
+    }
+    const firstListener = sseListeners.values().next().value;
+    if (firstListener) connectSSE(firstListener);
+  }
+}
+
+// Reconectar cuando vuelve la conexión de red (browser event)
+if (typeof window !== "undefined") {
+  window.addEventListener("online", handleSSENetworkRestore);
+}
+
+// Reconectar cuando el usuario vuelve a la pestaña/app (backgrounding en móvil)
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      handleSSENetworkRestore();
+    }
+  });
+}
+// ─────────────────────────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<LocalCacheSession | null>(null);
   const [version, setVersion] = useState(0);

@@ -14,6 +14,27 @@ export const API_BASE: string =
 const API_PATH = '';
 const API_KEY = import.meta.env.VITE_API_KEY || 'dev-key';
 
+// ── Debounce offline para evitar falsos positivos en móvil ──────────────────
+// Micro-cortes de señal (metro, elevador) no deben activar el banner de error.
+// Solo se marca "offline" si el error persiste más de 2.5 segundos.
+let _offlineDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleOfflineNotification() {
+  if (_offlineDebounceTimer) return;
+  _offlineDebounceTimer = setTimeout(() => {
+    _offlineDebounceTimer = null;
+    window.dispatchEvent(new CustomEvent("backend:status", { detail: { online: false } }));
+  }, 2500);
+}
+
+function cancelOfflineNotification() {
+  if (_offlineDebounceTimer) {
+    clearTimeout(_offlineDebounceTimer);
+    _offlineDebounceTimer = null;
+  }
+}
+// ────────────────────────────────────────────────────────────────────────────
+
 function getStoredToken(): string | null {
   // Prioridad: sessionStorage luego localStorage (alineado con auth-context)
   try {
@@ -115,7 +136,8 @@ export async function apiFetchJSON<T = any>(
     throw err;
   }
 
-  // Notify success
+  // Notify success + cancel pending offline debounce
+  cancelOfflineNotification();
   window.dispatchEvent(new CustomEvent("backend:status", { detail: { online: true } }));
 
   return data as T;
@@ -126,10 +148,12 @@ const originalFetch = window.fetch;
 window.fetch = async (...args) => {
   try {
     const res = await originalFetch(...args);
+    // Si el fetch tuvo éxito, cancelar cualquier notificación offline pendiente
+    cancelOfflineNotification();
     return res;
   } catch (err) {
-    // Si es error de red (no hay conexión al backend), notificar
-    window.dispatchEvent(new CustomEvent("backend:status", { detail: { online: false } }));
+    // Si es error de red (no hay conexión al backend), programar notificación con debounce
+    scheduleOfflineNotification();
     throw err;
   }
 };
