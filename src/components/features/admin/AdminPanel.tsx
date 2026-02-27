@@ -740,7 +740,8 @@ export default function AdminPanel({
     <div className="space-y-6">
       <Tabs defaultValue="executive" className="w-full">
         {/* Tabs con mini-gráficos — carrusel horizontal en móvil */}
-        <TabsList className="inline-flex h-auto gap-1 py-1 w-full overflow-x-auto overflow-y-hidden scrollbar-hide snap-x snap-mandatory md:flex-wrap md:px-1">
+        <div className="w-full overflow-x-auto overflow-y-hidden scrollbar-hide">
+        <TabsList className="inline-flex h-auto gap-1 py-1 px-1 w-max min-w-full snap-x snap-mandatory justify-start md:w-full md:justify-center md:flex-wrap">
           {/* Ejecutivo - Sparkline de ventas */}
           <TabsTrigger value="executive" className="flex-none md:flex-1 flex items-center justify-center gap-2 px-3 py-2 min-h-[52px] min-w-[120px] snap-start ml-1 md:ml-0">
             <div className="flex items-center gap-2">
@@ -821,6 +822,7 @@ export default function AdminPanel({
             </div>
           </TabsTrigger>
         </TabsList>
+        </div>
 
         <TabsContent value="executive">
           <ExecutiveDashboard products={products} sales={sales} />
