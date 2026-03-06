@@ -128,7 +128,7 @@ export const recalculateWindow = async (req: Request, res: Response) => {
 
         res.json({ 
             success: true, 
-            windowClose: newWindowClose.toISOString(),
+            windowClose: newWindowClose instanceof Date ? newWindowClose.toISOString() : newWindowClose,
             session: updatedSession 
         });
     } catch (error) {

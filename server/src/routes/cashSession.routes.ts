@@ -6,9 +6,10 @@ import {
   closeCurrentSession,
   getSummary,
   getBalance,
-  addMovement,
+  extendSession,
 } from "../controllers/cashSession.controller";
 import { authenticateToken } from "../middlewares/auth.middleware";
+import { auditMiddleware, AuditActions } from "../middlewares/audit.middleware";
 
 const router = Router();
 
@@ -20,9 +21,9 @@ router.use(authenticateToken);
 
 router.get("/current", getCurrent);
 router.get("/balance", getBalance);
-router.post("/open", openSession);
-router.post("/close", closeCurrentSession); // Cerrar sesión actual sin ID
+router.post("/open", auditMiddleware(AuditActions.CASH_SESSION_OPEN, "cash_session"), openSession);
+router.post("/close", closeCurrentSession); // audit is inside controller (needs balance calc first)
+router.post("/extend", extendSession); // audit is inside controller
 router.post("/:id/close", closeSession); // Cerrar sesión específica por ID
-router.post("/movement", addMovement);
 
 export default router;

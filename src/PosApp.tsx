@@ -2,7 +2,7 @@ import { useState, useEffect, lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "./components/ui/button";
 import { Toaster } from "./components/ui/sonner";
-import { ShoppingCart, Banknote, Scan } from "lucide-react";
+import { ShoppingCart, Scan } from "lucide-react";
 import { postJSON } from "./lib/api";
 import {
   Dialog,
@@ -50,6 +50,7 @@ import { toast } from "sonner";
 import Notifications from "./components/features/notifications/Notifications";
 import { useInitialData } from "./hooks/useInitialData";
 import { MainLayout } from "./components/layout/MainLayout";
+import { CashStatusBadge } from "./components/features/cash/CashStatusBadge";
 // Normalización de códigos eliminada: usar el código tal cual
 
 /**
@@ -655,21 +656,13 @@ function PosAppContent() {
           } catch {}
         }}
       />
-      <Button
+      <CashStatusBadge
         onClick={() => {
           setShowBarcodeScanner(false);
           setShowPriceCalc(false);
           setShowCash(true);
         }}
-        variant="outline"
-        className="flex items-center gap-2"
-      >
-        <Banknote className="size-4" />
-        Caja
-        <span className="hidden sm:inline text-xs text-muted-foreground">
-          (F1)
-        </span>
-      </Button>
+      />
       <Button
         onClick={() => {
           setShowBarcodeScanner(false);

@@ -579,6 +579,8 @@ export const demoCategoryThresholds = [
 
 // ── Analíticas ────────────────────────────────────────────────────────────
 
+import { demoProducts } from "./products";
+
 const todaySales = demoSales.filter(
   (s) => s.date.toDateString() === new Date(2026, 1, 25).toDateString()
 );
@@ -589,89 +591,131 @@ const lastMonthSales = demoSales.filter(
   (s) => s.date.getMonth() === 0 && s.date.getFullYear() === 2026
 );
 
+// Agrupaciones para métricas
+const itemsSold = monthSales.reduce((sum, s) => sum + s.items.reduce((acc, item) => acc + item.quantity, 0), 0);
+
+const productStats = monthSales.reduce((acc, sale) => {
+  sale.items.forEach(item => {
+    if (!acc[item.productId]) {
+      acc[item.productId] = { id: item.productId, name: item.productName, totalQuantity: 0, totalRevenue: 0 };
+    }
+    acc[item.productId].totalQuantity += item.quantity;
+    acc[item.productId].totalRevenue += item.subtotal;
+  });
+  return acc;
+}, {} as Record<number, any>);
+
+const topProducts = Object.values(productStats)
+  .sort((a, b) => b.totalQuantity - a.totalQuantity)
+  .slice(0, 10);
+
+const categoryStatsBase = monthSales.reduce((acc, sale) => {
+  sale.items.forEach(item => {
+    const prod = demoProducts.find(p => p.id === item.productId);
+    const cat = prod?.category || "Otros";
+    if (!acc[cat]) acc[cat] = { category: cat, totalQuantity: 0, totalRevenue: 0 };
+    acc[cat].totalQuantity += item.quantity;
+    acc[cat].totalRevenue += item.subtotal;
+  });
+  return acc;
+}, {} as Record<string, any>);
+
+const categoryStats = Object.values(categoryStatsBase)
+  .sort((a, b) => b.totalRevenue - a.totalRevenue);
+
+const paymentStatsBase = monthSales.reduce((acc, sale) => {
+  const pm = sale.paymentMethod || "efectivo";
+  if (!acc[pm]) acc[pm] = { paymentMethod: pm, count: 0, total: 0 };
+  acc[pm].count += 1;
+  acc[pm].total += sale.total;
+  return acc;
+}, {} as Record<string, any>);
+
+const paymentMethods = Object.values(paymentStatsBase);
+
 export const demoAnalyticsMetrics = {
-  today: {
-    totalSales: todaySales.reduce((s, v) => s + v.total, 0),
-    numTransactions: todaySales.length,
-    avgTicket:
-      todaySales.length > 0
-        ? Math.round(todaySales.reduce((s, v) => s + v.total, 0) / todaySales.length)
-        : 0,
-    topProduct: "Cristal Lata 350ml",
+  sales: {
+    totalSales: monthSales.length,
+    totalRevenue: monthSales.reduce((s, v) => s + v.total, 0),
+    avgTicket: monthSales.length > 0 ? Math.round(monthSales.reduce((s, v) => s + v.total, 0) / monthSales.length) : 0,
+    itemsSold
   },
-  month: {
-    totalSales: monthSales.reduce((s, v) => s + v.total, 0),
-    numTransactions: monthSales.length,
-    avgTicket:
-      monthSales.length > 0
-        ? Math.round(monthSales.reduce((s, v) => s + v.total, 0) / monthSales.length)
-        : 0,
-  },
-  lastMonth: {
-    totalSales: lastMonthSales.reduce((s, v) => s + v.total, 0),
-    numTransactions: lastMonthSales.length,
-  },
-  growthPct:
-    lastMonthSales.reduce((s, v) => s + v.total, 0) > 0
-      ? Math.round(
-          ((monthSales.reduce((s, v) => s + v.total, 0) -
-            lastMonthSales.reduce((s, v) => s + v.total, 0)) /
-            lastMonthSales.reduce((s, v) => s + v.total, 0)) *
-            100
-        )
-      : 0,
+  topProducts,
+  topMargin: [],
+  categoryStats,
+  paymentMethods,
+  stagnantProducts: []
 };
 
 // Tendencia de ventas (últimos 30 días)
 export const demoSalesTrend = (() => {
-  const days: { date: string; total: number; count: number }[] = [];
+  const days: any[] = [];
   const now = new Date(2026, 1, 25);
   for (let i = 29; i >= 0; i--) {
     const d = new Date(now);
     d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().split("T")[0];
-    const daySales = demoSales.filter(
-      (s) => s.date.toISOString().split("T")[0] === dateStr
-    );
+    // Local date string in YYYY-MM-DD
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    
+    // Comparar contra YYYY-MM-DD local de las ventas
+    const daySales = demoSales.filter(s => {
+      const sd = `${s.date.getFullYear()}-${String(s.date.getMonth()+1).padStart(2,'0')}-${String(s.date.getDate()).padStart(2,'0')}`;
+      return sd === dateStr;
+    });
+
+    const revenue = daySales.reduce((s, v) => s + v.total, 0);
     days.push({
       date: dateStr,
-      total: daySales.reduce((s, v) => s + v.total, 0),
-      count: daySales.length,
+      revenue,
+      salesCount: daySales.length,
+      avgTicket: daySales.length > 0 ? Math.round(revenue / daySales.length) : 0
     });
   }
-  return days;
+  return { trend: days };
 })();
 
 export const demoSalesByHour = (() => {
-  const hours: { hour: number; total: number; count: number }[] = [];
+  const hours: any[] = [];
   for (let h = 0; h < 24; h++) {
     const hourSales = monthSales.filter((s) => s.date.getHours() === h);
     hours.push({
       hour: h,
-      total: hourSales.reduce((s, v) => s + v.total, 0),
-      count: hourSales.length,
+      revenue: hourSales.reduce((s, v) => s + v.total, 0),
+      salesCount: hourSales.length,
     });
   }
-  return hours;
+  return { hourlyStats: hours };
 })();
 
-export const demoPeriodComparison = {
-  current: {
-    label: "Feb 2026",
-    total: monthSales.reduce((s, v) => s + v.total, 0),
-    count: monthSales.length,
-  },
-  previous: {
-    label: "Ene 2026",
-    total: lastMonthSales.reduce((s, v) => s + v.total, 0),
-    count: lastMonthSales.length,
-  },
-  diff: monthSales.reduce((s, v) => s + v.total, 0) -
-    lastMonthSales.reduce((s, v) => s + v.total, 0),
-};
+export const demoPeriodComparison = (() => {
+  const currentTotal = monthSales.reduce((s, v) => s + v.total, 0);
+  const previousTotal = lastMonthSales.reduce((s, v) => s + v.total, 0);
+  
+  return {
+    comparison: {
+      current: {
+        salesCount: monthSales.length,
+        revenue: currentTotal,
+        avgTicket: monthSales.length > 0 ? Math.round(currentTotal / monthSales.length) : 0,
+      },
+      previous: {
+        salesCount: lastMonthSales.length,
+        revenue: previousTotal,
+        avgTicket: lastMonthSales.length > 0 ? Math.round(previousTotal / lastMonthSales.length) : 0,
+      },
+      changes: {
+        salesCount: lastMonthSales.length > 0 ? ((monthSales.length - lastMonthSales.length) / lastMonthSales.length) * 100 : 100,
+        revenue: previousTotal > 0 ? ((currentTotal - previousTotal) / previousTotal) * 100 : 100,
+        avgTicket: 0,
+      }
+    }
+  };
+})();
 
-export const demoRestockPredictions = [
-  { productId: 25, productName: "Fanta Naranja 1.5L", currentStock: 5, predictedDaysLeft: 3, recommendedOrder: 36 },
-  { productId: 19, productName: "Ron Flor de Caña 750ml", currentStock: 8, predictedDaysLeft: 12, recommendedOrder: 12 },
-  { productId: 20, productName: "Gin Beefeater 750ml", currentStock: 6, predictedDaysLeft: 14, recommendedOrder: 12 },
-];
+export const demoRestockPredictions = {
+  predictions: [
+    { productId: 25, productName: "Fanta Naranja 1.5L", currentStock: 5, predictedDaysLeft: 3, recommendedOrder: 36 },
+    { productId: 19, productName: "Ron Flor de Caña 750ml", currentStock: 8, predictedDaysLeft: 12, recommendedOrder: 12 },
+    { productId: 20, productName: "Gin Beefeater 750ml", currentStock: 6, predictedDaysLeft: 14, recommendedOrder: 12 },
+  ]
+};

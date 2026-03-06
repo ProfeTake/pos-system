@@ -130,6 +130,7 @@ export const AuditActions = {
   // Cash Sessions
   CASH_SESSION_OPEN: "cash_session.open",
   CASH_SESSION_CLOSE: "cash_session.close",
+  CASH_SESSION_EXTEND: "cash_session.extend",
   CASH_MOVEMENT: "cash_movement.create",
 
   // Promotions

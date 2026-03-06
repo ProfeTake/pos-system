@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { db } from "../db";
-import { sales, saleItems, products } from "../db/schema";
-import { eq, sql, desc, ne } from "drizzle-orm";
+import { sales, saleItems, products, cashSessions } from "../db/schema";
+import { eq, sql, desc, ne, isNull } from "drizzle-orm";
 import { logAuditAction, AuditActions } from "../middlewares/audit.middleware";
 
 export const getAll = async (req: Request, res: Response) => {
@@ -110,13 +110,21 @@ export const create = async (req: Request, res: Response) => {
         }
       }
       
-      // Create sale
+      // Create sale — inject active cash session ID if available
+      const [activeSession] = await tx
+        .select({ id: cashSessions.id })
+        .from(cashSessions)
+        .where(isNull(cashSessions.closeTime))
+        .orderBy(desc(cashSessions.openTime))
+        .limit(1);
+
       const [saleInsertResult] = await tx
         .insert(sales)
         .values({
           total,
           paymentMethod,
           customerName,
+          cashSessionId: activeSession?.id ?? null,
         });
       const [newSale] = await tx
         .select()

@@ -159,6 +159,7 @@ export const sales = sqliteTable("sales", {
 	paymentMethod: text("payment_method").notNull(),
 	customerName: text("customer_name"),
 	customerId: text("customer_id"),
+	cashSessionId: integer("cash_session_id").references(() => cashSessions.id),
 	status: text().default("completed").notNull(),
 	voidedAt: integer("voided_at"),
 	voidedBy: integer("voided_by").references(() => users.id),
@@ -171,6 +172,7 @@ export const sales = sqliteTable("sales", {
 	index("sales_status_idx").on(table.status),
 	index("sales_payment_method_idx").on(table.paymentMethod),
 	index("sales_created_idx").on(table.createdAt),
+	index("sales_session_idx").on(table.cashSessionId),
 ]);
 
 export const customers = sqliteTable("customers", {

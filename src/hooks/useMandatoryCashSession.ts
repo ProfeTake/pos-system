@@ -296,14 +296,20 @@ export function useMandatoryCashSession() {
         ? customWindowClose.toISOString() 
         : operationalWindow.close.toISOString();
       
-      const data = await postJSON("/api/cash-session/open", { 
-        openingAmount,
-        windowOpen,
-        windowClose 
+      const resp = await fetch(`${API_BASE}/api/cash-session/open`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ openingAmount, windowOpen, windowClose }),
       });
+      const data = await resp.json();
       
-      // Si es nuevo turno, podemos mostrar aviso UI; evitar logs en consola
-      
+      // 409 = sesión ya abierta (overlap), 201 = nueva sesión
+      if (resp.status === 409) {
+        data.already = true;
+      } else if (!resp.ok) {
+        throw new Error(data?.message || "Error abriendo sesión");
+      }
+
       refresh();
       try {
         window.dispatchEvent(new CustomEvent("cash:session-changed"));
@@ -314,12 +320,31 @@ export function useMandatoryCashSession() {
   );
 
   const closeSession = useCallback(
-    async (closingAmount?: number) => {
-      await postJSON("/api/cash-session/close", { closingAmount });
+    async (closingAmount?: number, declaredCash?: number) => {
+      await postJSON("/api/cash-session/close", {
+        closingAmount,
+        declaredCash,
+      });
       refresh();
       try {
         window.dispatchEvent(new CustomEvent("cash:session-changed"));
       } catch {}
+    },
+    [refresh]
+  );
+
+  /**
+   * Extiende la ventana de cierre de la sesión activa (server-controlled).
+   * Retorna el nuevo windowClose y los minutos que se extendieron.
+   */
+  const extendSession = useCallback(
+    async (reason?: string) => {
+      const data = await postJSON("/api/cash-session/extend", { reason });
+      refresh();
+      try {
+        window.dispatchEvent(new CustomEvent("cash:session-changed"));
+      } catch {}
+      return data;
     },
     [refresh]
   );
@@ -386,11 +411,11 @@ export function useMandatoryCashSession() {
     }
   }, []);
 
-  // Memoizar valores derivados - se calculan una vez por mount
-  const within = useMemo(() => isWithinOperationalHours(), []);
-  const opWindow = useMemo(() => getOperationalWindow(), []);
-  const closeAt = useMemo(() => getCloseTime(), []);
-  const nextOpen = useMemo(() => getNextOpenTime(), []);
+  // Memoizar valores derivados - recalcular al cambiar sesión o versión
+  const within = useMemo(() => isWithinOperationalHours(), [version]);
+  const opWindow = useMemo(() => getOperationalWindow(), [version]);
+  const closeAt = useMemo(() => getCloseTime(), [version]);
+  const nextOpen = useMemo(() => getNextOpenTime(), [version]);
   const mustOpen = !session;
 
   return {
@@ -400,6 +425,7 @@ export function useMandatoryCashSession() {
     refresh,
     openSession,
     closeSession,
+    extendSession,
     addMovement,
     getCurrentBalance,
     getCurrentMovements,

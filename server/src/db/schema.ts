@@ -100,6 +100,7 @@ export const sales = mysqlTable(
     paymentMethod: varchar("payment_method", { length: 64 }).notNull(),
     customerName: varchar("customer_name", { length: 255 }),
     customerId: varchar("customer_id", { length: 36 }),
+    cashSessionId: int("cash_session_id").references(() => cashSessions.id),
     status: mysqlEnum("status", ["completed", "voided", "refunded"])
       .notNull()
       .default("completed"),
@@ -115,6 +116,7 @@ export const sales = mysqlTable(
     salesPaymentIdx: index("sales_payment_method_idx").on(t.paymentMethod),
     salesStatusIdx: index("sales_status_idx").on(t.status),
     salesCustomerIdx: index("sales_customer_id_idx").on(t.customerId),
+    salesSessionIdx: index("sales_session_idx").on(t.cashSessionId),
   })
 );
 

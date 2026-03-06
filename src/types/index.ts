@@ -128,6 +128,7 @@ export interface CashSession {
   declaredCash?: number;
   difference?: number;
   notes?: string;
+  windowOpen?: string;
   windowClose?: string;
 }
 

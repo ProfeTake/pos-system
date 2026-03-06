@@ -13,6 +13,7 @@ interface CashStatusContextValue {
   refresh: MandatoryCashSessionReturn["refresh"];
   openSession: MandatoryCashSessionReturn["openSession"];
   closeSession: MandatoryCashSessionReturn["closeSession"];
+  extendSession: MandatoryCashSessionReturn["extendSession"];
   addMovement: MandatoryCashSessionReturn["addMovement"];
   getCurrentBalance: MandatoryCashSessionReturn["getCurrentBalance"];
   getCurrentMovements: MandatoryCashSessionReturn["getCurrentMovements"];
@@ -57,6 +58,7 @@ export function CashStatusProvider({
       refresh: cashSession.refresh,
       openSession: cashSession.openSession,
       closeSession: cashSession.closeSession,
+      extendSession: cashSession.extendSession,
       addMovement: cashSession.addMovement,
       getCurrentBalance: cashSession.getCurrentBalance,
       getCurrentMovements: cashSession.getCurrentMovements,

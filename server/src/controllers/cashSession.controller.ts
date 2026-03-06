@@ -1,7 +1,8 @@
 import { Request, Response } from "express";
 import { db } from "../db";
 import { cashSessions, sales, cashMovements } from "../db/schema";
-import { eq, isNull, desc, and, sql, gte, lte } from "drizzle-orm";
+import { eq, isNull, desc, and, sql, gte, lte, or } from "drizzle-orm";
+import { logAuditAction, AuditActions } from "../middlewares/audit.middleware";
 
 export const getCurrent = async (req: Request, res: Response) => {
   try {
@@ -47,8 +48,8 @@ export const openSession = async (req: Request, res: Response) => {
       .limit(1);
 
     if (existingOpen) {
-      // Ya hay sesión abierta, devolver esa
-      return res.status(200).json({ ...existingOpen, already: true });
+      // Ya hay sesión abierta — 409 Conflict para que el frontend distinga
+      return res.status(409).json({ ...existingOpen, already: true });
     }
 
     // Obtener la última sesión cerrada para detectar si es nuevo turno
@@ -137,11 +138,50 @@ export const closeCurrentSession = async (req: Request, res: Response) => {
     }
 
     const sessionId = openSession.id;
-    const final = finalCash ?? closingAmount ?? 0;
-    const declared = declaredCash ?? closingAmount ?? 0;
+
+    // Calcular balance real del sistema (server-side)
+    const sessionStart =
+      openSession.openTime instanceof Date
+        ? openSession.openTime
+        : new Date(openSession.openTime);
+    const now = new Date();
+
+    const [efectivoRow] = await db
+      .select({ total: sql<number>`COALESCE(sum(${sales.total}),0)` })
+      .from(sales)
+      .where(
+        and(
+          eq(sales.paymentMethod, "efectivo"),
+          eq(sales.status, "completed"),
+          or(
+            eq(sales.cashSessionId, sessionId),
+            and(
+              isNull(sales.cashSessionId),
+              gte(sales.createdAt, sessionStart),
+              lte(sales.createdAt, now)
+            )
+          )
+        )
+      );
+    const [movRow] = await db
+      .select({ total: sql<number>`COALESCE(sum(${cashMovements.amount}),0)` })
+      .from(cashMovements)
+      .where(eq(cashMovements.sessionId, sessionId));
+
+    const efectivoVentas = efectivoRow?.total || 0;
+    const movimientosNeto = movRow?.total || 0;
+    const systemBalance =
+      openSession.initialCash + efectivoVentas + movimientosNeto;
+
+    // El finalCash es el balance calculado por el sistema
+    const final = finalCash ?? systemBalance;
+    // El declaredCash es lo que el cajero declaró contar físicamente
+    // Si no se envía declaredCash, usar closingAmount como fallback de compatibilidad
+    const declared = declaredCash ?? closingAmount ?? final;
     const difference = declared - final;
 
-    await db.update(cashSessions)
+    await db
+      .update(cashSessions)
       .set({
         closeTime: new Date(),
         finalCash: final,
@@ -157,6 +197,20 @@ export const closeCurrentSession = async (req: Request, res: Response) => {
       .where(eq(cashSessions.id, sessionId))
       .limit(1);
 
+    // Auditar el cierre
+    logAuditAction(req, {
+      action: AuditActions.CASH_SESSION_CLOSE,
+      entity: "cash_session",
+      entityId: sessionId,
+      details: {
+        finalCash: final,
+        declaredCash: declared,
+        difference,
+        efectivoVentas,
+        movimientosNeto,
+      },
+    });
+
     res.json(updated);
   } catch (error) {
     console.error("Error closing current session:", error);
@@ -164,7 +218,7 @@ export const closeCurrentSession = async (req: Request, res: Response) => {
   }
 };
 
-// Get session summary
+// Get session summary (enriched)
 export const getSummary = async (req: Request, res: Response) => {
   try {
     const [session] = await db
@@ -182,8 +236,11 @@ export const getSummary = async (req: Request, res: Response) => {
       open: true,
       id: session.id,
       openTime: session.openTime,
+      openedAt: session.openTime, // alias for frontend compatibility
+      windowOpen: session.windowOpen,
       windowClose: session.windowClose,
       initialCash: session.initialCash,
+      openingAmount: session.initialCash, // alias for frontend compatibility
     });
   } catch (error) {
     console.error("Error fetching summary:", error);
@@ -206,26 +263,40 @@ export const getBalance = async (req: Request, res: Response) => {
     }
 
     const sessionStart =
-      s.openTime instanceof Date
-        ? s.openTime
-        : new Date(s.openTime);
+      s.openTime instanceof Date ? s.openTime : new Date(s.openTime);
     const now = new Date();
 
-    // Ventas en efectivo dentro de la ventana de la sesión
+    // Ventas en efectivo: preferir FK cashSessionId, fallback a rango de fechas (legacy)
     const [efectivoRow] = await db
       .select({ total: sql<number>`COALESCE(sum(${sales.total}),0)` })
       .from(sales)
       .where(
         and(
           eq(sales.paymentMethod, "efectivo"),
-          gte(sales.createdAt, sessionStart),
-          lte(sales.createdAt, now)
+          eq(sales.status, "completed"),
+          or(
+            eq(sales.cashSessionId, s.id),
+            and(
+              isNull(sales.cashSessionId),
+              gte(sales.createdAt, sessionStart),
+              lte(sales.createdAt, now)
+            )
+          )
         )
       );
 
     const efectivoVentas = efectivoRow?.total || 0;
 
-    // Movimientos de caja (ingresos / egresos) asociados a la sesión
+    // Movimientos de caja asociados a la sesión — sumar TODOS los tipos.
+    // INGRESO tiene amount > 0, EGRESO tiene amount < 0 (normalizado al crear).
+    const [movRow] = await db
+      .select({ total: sql<number>`COALESCE(sum(${cashMovements.amount}),0)` })
+      .from(cashMovements)
+      .where(eq(cashMovements.sessionId, s.id));
+
+    const movimientosNeto = movRow?.total || 0;
+
+    // Desglosar ingresos y egresos para el response detallado
     const [ingresosRow] = await db
       .select({ total: sql<number>`COALESCE(sum(${cashMovements.amount}),0)` })
       .from(cashMovements)
@@ -236,17 +307,21 @@ export const getBalance = async (req: Request, res: Response) => {
         )
       );
     const [egresosRow] = await db
-      .select({ total: sql<number>`COALESCE(sum(${cashMovements.amount}),0)` })
+      .select({
+        total: sql<number>`COALESCE(sum(ABS(${cashMovements.amount})),0)`,
+      })
       .from(cashMovements)
       .where(
-        and(eq(cashMovements.sessionId, s.id), eq(cashMovements.type, "EGRESO"))
+        and(
+          eq(cashMovements.sessionId, s.id),
+          eq(cashMovements.type, "EGRESO")
+        )
       );
 
     const ingresos = ingresosRow?.total || 0;
     const egresos = egresosRow?.total || 0;
 
-    const balanceCalculado =
-      s.initialCash + efectivoVentas + ingresos - egresos;
+    const balanceCalculado = s.initialCash + efectivoVentas + movimientosNeto;
 
     res.json({
       open: true,
@@ -263,8 +338,79 @@ export const getBalance = async (req: Request, res: Response) => {
   }
 };
 
-// Add movement
-export const addMovement = async (req: Request, res: Response) => {
-  // This endpoint is handled by cash movements controller
-  res.status(404).json({ message: "Use /api/cash-movements instead" });
+// Extend session window (server-controlled, audited)
+export const extendSession = async (req: Request, res: Response) => {
+  const { reason } = req.body;
+  const MAX_EXTEND_MINUTES = 120; // Máximo 2 horas de extensión total
+  const EXTEND_STEP_MINUTES = 30; // Cada extensión agrega 30 minutos
+
+  try {
+    const [openSess] = await db
+      .select()
+      .from(cashSessions)
+      .where(isNull(cashSessions.closeTime))
+      .orderBy(desc(cashSessions.openTime))
+      .limit(1);
+
+    if (!openSess) {
+      return res.status(404).json({ message: "No hay sesión abierta" });
+    }
+
+    // Calcular el nuevo windowClose
+    const currentClose = openSess.windowClose
+      ? new Date(openSess.windowClose)
+      : new Date();
+    const newClose = new Date(
+      currentClose.getTime() + EXTEND_STEP_MINUTES * 60 * 1000
+    );
+
+    // Calcular cuánto se ha extendido ya desde el windowClose original de la ventana operacional
+    const originalOpen = openSess.openTime
+      ? new Date(openSess.openTime)
+      : new Date();
+    const maxAllowed = new Date(
+      originalOpen.getTime() + (12 + MAX_EXTEND_MINUTES / 60) * 60 * 60 * 1000
+    ); // 12h de jornada + 2h extensión máxima
+
+    if (newClose > maxAllowed) {
+      return res.status(400).json({
+        message: `No se puede extender más allá del límite máximo (${MAX_EXTEND_MINUTES} minutos de extensión)`,
+        maxAllowed: maxAllowed.toISOString(),
+      });
+    }
+
+    await db
+      .update(cashSessions)
+      .set({ windowClose: newClose })
+      .where(eq(cashSessions.id, openSess.id));
+
+    // Auditar la extensión
+    logAuditAction(req, {
+      action: "cash_session.extend",
+      entity: "cash_session",
+      entityId: openSess.id,
+      details: {
+        previousClose: currentClose.toISOString(),
+        newClose: newClose.toISOString(),
+        extendedMinutes: EXTEND_STEP_MINUTES,
+        reason: reason || "Extensión solicitada por operador",
+      },
+    });
+
+    const [updated] = await db
+      .select()
+      .from(cashSessions)
+      .where(eq(cashSessions.id, openSess.id))
+      .limit(1);
+
+    res.json({
+      success: true,
+      session: updated,
+      windowClose: newClose.toISOString(),
+      extendedMinutes: EXTEND_STEP_MINUTES,
+    });
+  } catch (error) {
+    console.error("Error extending session:", error);
+    res.status(500).json({ message: "Error extending session" });
+  }
 };
