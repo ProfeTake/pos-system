@@ -111,21 +111,40 @@ export const create = async (req: Request, res: Response) => {
       }
       
       // Create sale — inject active cash session ID if available
-      const [activeSession] = await tx
-        .select({ id: cashSessions.id })
-        .from(cashSessions)
-        .where(isNull(cashSessions.closeTime))
-        .orderBy(desc(cashSessions.openTime))
-        .limit(1);
+      let activeSessionId: number | null = null;
+      try {
+        const [activeSession] = await tx
+          .select({ id: cashSessions.id })
+          .from(cashSessions)
+          .where(isNull(cashSessions.closeTime))
+          .orderBy(desc(cashSessions.openTime))
+          .limit(1);
+        activeSessionId = activeSession?.id ?? null;
+      } catch {
+        // cashSessions table query failed — skip session linkage
+      }
 
-      const [saleInsertResult] = await tx
-        .insert(sales)
-        .values({
-          total,
-          paymentMethod,
-          customerName,
-          cashSessionId: activeSession?.id ?? null,
-        });
+      // Try with cashSessionId first; if column doesn't exist, retry without
+      let saleInsertResult: any;
+      try {
+        [saleInsertResult] = await tx
+          .insert(sales)
+          .values({
+            total,
+            paymentMethod,
+            customerName,
+            cashSessionId: activeSessionId,
+          });
+      } catch {
+        // Fallback: cashSessionId column may not exist yet
+        [saleInsertResult] = await tx
+          .insert(sales)
+          .values({
+            total,
+            paymentMethod,
+            customerName,
+          } as any);
+      }
       const [newSale] = await tx
         .select()
         .from(sales)

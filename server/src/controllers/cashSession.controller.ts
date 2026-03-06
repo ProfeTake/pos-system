@@ -146,29 +146,47 @@ export const closeCurrentSession = async (req: Request, res: Response) => {
         : new Date(openSession.openTime);
     const now = new Date();
 
-    const [efectivoRow] = await db
-      .select({ total: sql<number>`COALESCE(sum(${sales.total}),0)` })
-      .from(sales)
-      .where(
-        and(
-          eq(sales.paymentMethod, "efectivo"),
-          eq(sales.status, "completed"),
-          or(
-            eq(sales.cashSessionId, sessionId),
-            and(
-              isNull(sales.cashSessionId),
-              gte(sales.createdAt, sessionStart),
-              lte(sales.createdAt, now)
+    // Sales query — try cashSessionId FK first, fallback to date-range
+    let efectivoVentas = 0;
+    try {
+      const [efectivoRow] = await db
+        .select({ total: sql<number>`COALESCE(sum(${sales.total}),0)` })
+        .from(sales)
+        .where(
+          and(
+            eq(sales.paymentMethod, "efectivo"),
+            eq(sales.status, "completed"),
+            or(
+              eq(sales.cashSessionId, sessionId),
+              and(
+                isNull(sales.cashSessionId),
+                gte(sales.createdAt, sessionStart),
+                lte(sales.createdAt, now)
+              )
             )
           )
-        )
-      );
+        );
+      efectivoVentas = efectivoRow?.total || 0;
+    } catch {
+      // Fallback: column may not exist yet — use date range only
+      const [fallbackRow] = await db
+        .select({ total: sql<number>`COALESCE(sum(${sales.total}),0)` })
+        .from(sales)
+        .where(
+          and(
+            eq(sales.paymentMethod, "efectivo"),
+            eq(sales.status, "completed"),
+            gte(sales.createdAt, sessionStart),
+            lte(sales.createdAt, now)
+          )
+        );
+      efectivoVentas = fallbackRow?.total || 0;
+    }
     const [movRow] = await db
       .select({ total: sql<number>`COALESCE(sum(${cashMovements.amount}),0)` })
       .from(cashMovements)
       .where(eq(cashMovements.sessionId, sessionId));
 
-    const efectivoVentas = efectivoRow?.total || 0;
     const movimientosNeto = movRow?.total || 0;
     const systemBalance =
       openSession.initialCash + efectivoVentas + movimientosNeto;
@@ -267,25 +285,41 @@ export const getBalance = async (req: Request, res: Response) => {
     const now = new Date();
 
     // Ventas en efectivo: preferir FK cashSessionId, fallback a rango de fechas (legacy)
-    const [efectivoRow] = await db
-      .select({ total: sql<number>`COALESCE(sum(${sales.total}),0)` })
-      .from(sales)
-      .where(
-        and(
-          eq(sales.paymentMethod, "efectivo"),
-          eq(sales.status, "completed"),
-          or(
-            eq(sales.cashSessionId, s.id),
-            and(
-              isNull(sales.cashSessionId),
-              gte(sales.createdAt, sessionStart),
-              lte(sales.createdAt, now)
+    let efectivoVentas = 0;
+    try {
+      const [efectivoRow] = await db
+        .select({ total: sql<number>`COALESCE(sum(${sales.total}),0)` })
+        .from(sales)
+        .where(
+          and(
+            eq(sales.paymentMethod, "efectivo"),
+            eq(sales.status, "completed"),
+            or(
+              eq(sales.cashSessionId, s.id),
+              and(
+                isNull(sales.cashSessionId),
+                gte(sales.createdAt, sessionStart),
+                lte(sales.createdAt, now)
+              )
             )
           )
-        )
-      );
-
-    const efectivoVentas = efectivoRow?.total || 0;
+        );
+      efectivoVentas = efectivoRow?.total || 0;
+    } catch {
+      // Fallback: cashSessionId column may not exist yet
+      const [fallbackRow] = await db
+        .select({ total: sql<number>`COALESCE(sum(${sales.total}),0)` })
+        .from(sales)
+        .where(
+          and(
+            eq(sales.paymentMethod, "efectivo"),
+            eq(sales.status, "completed"),
+            gte(sales.createdAt, sessionStart),
+            lte(sales.createdAt, now)
+          )
+        );
+      efectivoVentas = fallbackRow?.total || 0;
+    }
 
     // Movimientos de caja asociados a la sesión — sumar TODOS los tipos.
     // INGRESO tiene amount > 0, EGRESO tiene amount < 0 (normalizado al crear).
