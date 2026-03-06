@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { db } from "../db";
 import { cashSessions, sales, cashMovements } from "../db/schema";
-import { eq, isNull, desc, and, sql, gte, lte, or } from "drizzle-orm";
+import { eq, isNull, desc, and, sql, gte, lte } from "drizzle-orm";
 import { logAuditAction, AuditActions } from "../middlewares/audit.middleware";
 
 export const getCurrent = async (req: Request, res: Response) => {
@@ -146,7 +146,7 @@ export const closeCurrentSession = async (req: Request, res: Response) => {
         : new Date(openSession.openTime);
     const now = new Date();
 
-    // Sales query — try cashSessionId FK first, fallback to date-range
+    // Ventas en efectivo vinculadas a esta sesión por FK
     let efectivoVentas = 0;
     try {
       const [efectivoRow] = await db
@@ -156,14 +156,7 @@ export const closeCurrentSession = async (req: Request, res: Response) => {
           and(
             eq(sales.paymentMethod, "efectivo"),
             eq(sales.status, "completed"),
-            or(
-              eq(sales.cashSessionId, sessionId),
-              and(
-                isNull(sales.cashSessionId),
-                gte(sales.createdAt, sessionStart),
-                lte(sales.createdAt, now)
-              )
-            )
+            eq(sales.cashSessionId, sessionId)
           )
         );
       efectivoVentas = efectivoRow?.total || 0;
@@ -284,7 +277,7 @@ export const getBalance = async (req: Request, res: Response) => {
       s.openTime instanceof Date ? s.openTime : new Date(s.openTime);
     const now = new Date();
 
-    // Ventas en efectivo: preferir FK cashSessionId, fallback a rango de fechas (legacy)
+    // Ventas en efectivo vinculadas a esta sesión por FK
     let efectivoVentas = 0;
     try {
       const [efectivoRow] = await db
@@ -294,14 +287,7 @@ export const getBalance = async (req: Request, res: Response) => {
           and(
             eq(sales.paymentMethod, "efectivo"),
             eq(sales.status, "completed"),
-            or(
-              eq(sales.cashSessionId, s.id),
-              and(
-                isNull(sales.cashSessionId),
-                gte(sales.createdAt, sessionStart),
-                lte(sales.createdAt, now)
-              )
-            )
+            eq(sales.cashSessionId, s.id)
           )
         );
       efectivoVentas = efectivoRow?.total || 0;
