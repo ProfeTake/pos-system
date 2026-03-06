@@ -5,7 +5,7 @@ import {
   getNextOpenTime,
   isWithinOperationalHours,
 } from "../utils/businessHours";
-import { API_BASE, apiFetchJSON, postJSON } from "../lib/api";
+import { API_BASE, apiFetch, apiFetchJSON, postJSON } from "../lib/api";
 import { isDemoMode } from "../lib/demo";
 
 // Fuente de verdad: backend summary. Evitamos manipular localStorage salvo para recordar última apertura.
@@ -296,9 +296,8 @@ export function useMandatoryCashSession() {
         ? customWindowClose.toISOString() 
         : operationalWindow.close.toISOString();
       
-      const resp = await fetch(`${API_BASE}/api/cash-session/open`, {
+      const resp = await apiFetch("/api/cash-session/open", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ openingAmount, windowOpen, windowClose }),
       });
       const data = await resp.json();
