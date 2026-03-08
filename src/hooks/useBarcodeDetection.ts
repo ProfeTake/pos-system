@@ -178,6 +178,8 @@ export function useBarcodeDetection({
   // Refs internas
   const quaggaContainerRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
+  /** Motor activo: afecta umbrales de consenso */
+  const engineRef = useRef<"native" | "quagga" | null>(null);
   const detectionBufferRef = useRef<DetectionBufferEntry[]>([]);
   const scanningLockedRef = useRef(false);
   const lastAcceptedCodeRef = useRef<string | null>(null);
@@ -329,31 +331,36 @@ export function useBarcodeDetection({
       const buf = detectionBufferRef.current;
       buf.push({ code: normalizedCode, format, timestamp: now });
 
-      // Limpiar entradas fuera de ventana de 1200ms
-      while (buf.length && now - buf[0].timestamp > 1200) buf.shift();
+      // === Umbrales diferenciados por motor ===
+      // Nativo (BarcodeDetector hardware) = más confiable → consenso relajado
+      // QuaggaJS (decodificación JS software) = propenso a errores → consenso estricto
+      const isNative = engineRef.current === "native";
+      const windowMs = isNative ? 1000 : 1200;
+      const consecutiveNeeded = isNative ? 2 : 3;
+      const consecutiveWindowMs = isNative ? 600 : 800;
+      const countNeeded = isNative ? 3 : 4;
 
-      // Criterio 1: 3 lecturas consecutivas iguales en ≤800ms
-      if (buf.length >= 3) {
-        const last = buf[buf.length - 1];
-        const prev1 = buf[buf.length - 2];
-        const prev2 = buf[buf.length - 3];
-        if (
-          last.code === prev1.code &&
-          last.code === prev2.code &&
-          last.timestamp - prev2.timestamp <= 800
-        ) {
-          acceptCode(last.code);
+      // Limpiar entradas fuera de ventana
+      while (buf.length && now - buf[0].timestamp > windowMs) buf.shift();
+
+      // Criterio 1: N lecturas consecutivas iguales
+      if (buf.length >= consecutiveNeeded) {
+        const tail = buf.slice(-consecutiveNeeded);
+        const allSame = tail.every((e) => e.code === tail[0].code);
+        const span = tail[tail.length - 1].timestamp - tail[0].timestamp;
+        if (allSame && span <= consecutiveWindowMs) {
+          acceptCode(tail[0].code);
           return;
         }
       }
 
-      // Criterio 2: 4+ apariciones en ventana de 1200ms
+      // Criterio 2: N+ apariciones en ventana
       const counts = new Map<string, number>();
       for (const item of buf) {
         counts.set(item.code, (counts.get(item.code) || 0) + 1);
       }
       for (const [code, count] of counts) {
-        if (count >= 4) {
+        if (count >= countNeeded) {
           acceptCode(code);
           return;
         }
@@ -371,14 +378,50 @@ export function useBarcodeDetection({
       try {
         const Detector = (window as any).BarcodeDetector;
         const detector = new Detector({ formats: [...NATIVE_FORMATS] });
+        engineRef.current = "native";
+
+        // Canvas para recortar ROI (solo centro del frame)
+        // Coincide con el viewfinder visual: top 20%, bottom 20%, left 10%, right 10%
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d")!;
+
+        // Throttle a ~10 FPS para no saturar CPU móvil
+        let lastFrameTime = 0;
 
         const loop = async () => {
           if (!videoEl || !mountedRef.current) return;
+
+          const now = performance.now();
+          if (now - lastFrameTime < 100) {
+            rafRef.current = requestAnimationFrame(loop);
+            return;
+          }
+          lastFrameTime = now;
+
           try {
-            const codes = await detector.detect(videoEl);
-            if (codes?.length > 0) {
-              const code = String(codes[0].rawValue || "").trim();
-              if (code) processDetection(code);
+            const vw = videoEl.videoWidth;
+            const vh = videoEl.videoHeight;
+
+            if (vw > 0 && vh > 0) {
+              // ROI: centro 80% horizontal × 60% vertical
+              const cropX = Math.floor(vw * 0.1);
+              const cropY = Math.floor(vh * 0.2);
+              const cropW = Math.floor(vw * 0.8);
+              const cropH = Math.floor(vh * 0.6);
+
+              canvas.width = cropW;
+              canvas.height = cropH;
+              ctx.drawImage(
+                videoEl,
+                cropX, cropY, cropW, cropH,
+                0, 0, cropW, cropH
+              );
+
+              const codes = await detector.detect(canvas);
+              if (codes?.length > 0) {
+                const code = String(codes[0].rawValue || "").trim();
+                if (code) processDetection(code);
+              }
             }
           } catch {
             /* Ignorar error de frame individual */
@@ -407,6 +450,7 @@ export function useBarcodeDetection({
       const Quagga = (await import("@ericblade/quagga2")).default;
 
       setIsUsingQuagga(true);
+      engineRef.current = "quagga";
 
       await new Promise<void>((resolve, reject) => {
         Quagga.init(
@@ -491,20 +535,22 @@ export function useBarcodeDetection({
       scanningLockedRef.current = false;
       lastAcceptedCodeRef.current = null;
 
-      const useNative = scanEngine === "native" && supportsBarcodeDetector;
-
-      if (useNative && videoEl) {
+      // SIEMPRE preferir BarcodeDetector nativo cuando está disponible.
+      // Es dramáticamente más preciso que QuaggaJS en cámaras de móvil
+      // porque usa el procesador de imagen del hardware del dispositivo.
+      // QuaggaJS solo se usa como fallback (Firefox desktop, etc.)
+      if (supportsBarcodeDetector && videoEl) {
         try {
           startNativeDetection(videoEl);
+          return; // Éxito — NO cargar QuaggaJS
         } catch {
-          // Fallback a QuaggaJS
-          await startQuaggaDetection();
+          // Nativo falló → fallback a QuaggaJS
         }
-      } else {
-        await startQuaggaDetection();
       }
+
+      await startQuaggaDetection();
     },
-    [scanEngine, supportsBarcodeDetector, startNativeDetection, startQuaggaDetection]
+    [supportsBarcodeDetector, startNativeDetection, startQuaggaDetection]
   );
 
   const stopDetection = useCallback(() => {
@@ -530,6 +576,7 @@ export function useBarcodeDetection({
 
     setIsDetecting(false);
     setIsUsingQuagga(false);
+    engineRef.current = null;
     setDetectedCode(null);
     setDetectedFormat(null);
   }, [isUsingQuagga]);

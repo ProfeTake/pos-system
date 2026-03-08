@@ -161,6 +161,22 @@ export const CameraViewfinder = forwardRef<
         </div>
       )}
 
+      {/* === Indicador del motor de detección === */}
+      {isActive && (
+        <div className="absolute top-2 right-2 z-10 pointer-events-none">
+          <Badge
+            variant="secondary"
+            className={`text-[9px] px-1.5 py-0.5 border-0 ${
+              isUsingQuagga
+                ? "bg-yellow-500/80 text-white"
+                : "bg-green-500/80 text-white"
+            }`}
+          >
+            {isUsingQuagga ? "⚙ Software" : "✓ Nativo"}
+          </Badge>
+        </div>
+      )}
+
       {/* === Flash verde de confirmación === */}
       {confirmFlash && (
         <div
