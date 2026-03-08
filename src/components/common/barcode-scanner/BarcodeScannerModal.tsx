@@ -208,22 +208,12 @@ export function BarcodeScanner({
   const startFullFlow = useCallback(async () => {
     try {
       await camera.startCamera();
-      // Esperar a que el video se inicie antes de conectar la detección
-      setTimeout(async () => {
-        try {
-          await detection.startDetection(
-            camera.videoRef.current,
-            camera.streamRef.current
-          );
-        } catch (e: any) {
-          // La detección puede fallar sin video; solo log
-          console.warn("Detection start error:", e?.message);
-        }
-      }, 500);
+      // La detección se inicia desde el useEffect que observa camera.status === "active"
+      // No usar setTimeout aquí para evitar double-start de detección
     } catch {
       // Camera start ya setea su propio error state
     }
-  }, [camera, detection]);
+  }, [camera]);
 
   const stopAll = useCallback(() => {
     detection.stopDetection();
@@ -231,13 +221,20 @@ export function BarcodeScanner({
   }, [camera, detection]);
 
   // Cuando la cámara pasa a "active", iniciar detección
+  // (Único punto de inicio de detección — evita double-start)
   useEffect(() => {
     if (camera.status === "active" && !detection.isDetecting) {
-      detection
-        .startDetection(camera.videoRef.current, camera.streamRef.current)
-        .catch(() => {
-          /* ignorar — se maneja en el hook */
-        });
+      // Pequeño delay para asegurar que el video tiene frames
+      const timer = setTimeout(() => {
+        if (camera.status === "active") {
+          detection
+            .startDetection(camera.videoRef.current, camera.streamRef.current)
+            .catch((e: any) => {
+              console.warn("Detection start failed:", e?.message);
+            });
+        }
+      }, 300);
+      return () => clearTimeout(timer);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camera.status]);

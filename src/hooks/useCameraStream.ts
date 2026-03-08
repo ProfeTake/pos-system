@@ -203,7 +203,16 @@ export function useCameraStream(): UseCameraStreamReturn {
 
     try {
       setStatus("starting");
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      // Timeout de seguridad: si getUserMedia tarda más de 10s, abortar
+      const stream = await Promise.race([
+        navigator.mediaDevices.getUserMedia(constraints),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Timeout: la cámara tardó demasiado en iniciar")),
+            10000
+          )
+        ),
+      ]);
 
       if (!mountedRef.current) {
         stream.getTracks().forEach((t) => t.stop());

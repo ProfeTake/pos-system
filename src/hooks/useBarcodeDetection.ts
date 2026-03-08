@@ -528,21 +528,43 @@ export function useBarcodeDetection({
       videoEl: HTMLVideoElement | null,
       stream: MediaStream | null
     ) => {
+      // ── Cancelar detección previa si existe ──
+      // Previene rAF loops huérfanos por double-start
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      if (isUsingQuagga) {
+        try {
+          const mod = await import("@ericblade/quagga2");
+          mod.default.stop();
+          mod.default.offDetected(() => {});
+        } catch { /* ignorar */ }
+        setIsUsingQuagga(false);
+      }
+
       // Resetear estado
       setDetectedCode(null);
       setDetectedFormat(null);
       detectionBufferRef.current = [];
       scanningLockedRef.current = false;
       lastAcceptedCodeRef.current = null;
+      setIsDetecting(false);
+      engineRef.current = null;
 
-      // SIEMPRE preferir BarcodeDetector nativo cuando está disponible.
+      // ── Intentar BarcodeDetector nativo ──
       // Es dramáticamente más preciso que QuaggaJS en cámaras de móvil
       // porque usa el procesador de imagen del hardware del dispositivo.
       // QuaggaJS solo se usa como fallback (Firefox desktop, etc.)
       if (supportsBarcodeDetector && videoEl) {
         try {
-          startNativeDetection(videoEl);
-          return; // Éxito — NO cargar QuaggaJS
+          // Verificar que el formatos están soportados
+          const Detector = (window as any).BarcodeDetector;
+          const supported = await Detector.getSupportedFormats?.();
+          if (!supported || supported.includes("ean_13")) {
+            startNativeDetection(videoEl);
+            return; // Éxito — NO cargar QuaggaJS
+          }
         } catch {
           // Nativo falló → fallback a QuaggaJS
         }
@@ -550,7 +572,7 @@ export function useBarcodeDetection({
 
       await startQuaggaDetection();
     },
-    [supportsBarcodeDetector, startNativeDetection, startQuaggaDetection]
+    [supportsBarcodeDetector, startNativeDetection, startQuaggaDetection, isUsingQuagga]
   );
 
   const stopDetection = useCallback(() => {
