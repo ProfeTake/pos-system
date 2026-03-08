@@ -3,16 +3,23 @@
  *
  * Encapsula toda la lógica de detección:
  *   - Motor dual: BarcodeDetector nativo (Chrome/Edge) + QuaggaJS (bundled)
- *   - Algoritmo de consenso anti-rebote (2 lecturas/500ms o 3 lecturas/800ms)
- *   - Normalización automática (UPC-A → EAN-13, checksum validation)
+ *   - Algoritmo de consenso estricto (3 lecturas/800ms o 4 lecturas/1200ms)
+ *   - Validación de checksum EAN-13/EAN-8/UPC-A antes de consenso
+ *   - Normalización automática (UPC-A → EAN-13)
  *   - Modo escaneo continuo con cooldown por código
  *   - Feedback háptico y sonoro
  *   - Historial de escaneos en sesión
+ *
+ * Nota: La gran mayoría de productos usan EAN-13 (13 dígitos).
+ * Los lectores y validaciones priorizan este formato.
  */
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import {
   normalizeBarcode,
+  isValidEan13,
+  isValidEan8,
+  isValidUpcA,
   type BarcodeFormat,
 } from "../utils/barcode";
 import type { CameraStatus } from "./useCameraStream";
@@ -86,24 +93,22 @@ interface DetectionBufferEntry {
 // Constantes
 // ============================================================
 
-/** Formatos soportados por BarcodeDetector nativo */
+/** Formatos soportados por BarcodeDetector nativo (EAN-13 primero) */
 const NATIVE_FORMATS = [
   "ean_13",
-  "ean_8",
-  "code_128",
-  "code_39",
   "upc_a",
-  "upc_e",
+  "ean_8",
 ] as const;
 
-/** Lectores configurados para QuaggaJS */
+/**
+ * Lectores configurados para QuaggaJS.
+ * Solo EAN-13, UPC-A y EAN-8 — eliminar Code-128/39 y UPC-E
+ * que generan falsos positivos sobre códigos EAN-13.
+ */
 const QUAGGA_READERS: string[] = [
   "ean_reader",
-  "ean_8_reader",
-  "code_128_reader",
-  "code_39_reader",
   "upc_reader",
-  "upc_e_reader",
+  "ean_8_reader",
 ];
 
 /** Cooldown entre aceptar el mismo código (modo continuo), en ms */
@@ -273,11 +278,29 @@ export function useBarcodeDetection({
   );
 
   /**
-   * Procesa cada detección individual. Normaliza, valida, y alimenta el buffer de consenso.
+   * Procesa cada detección individual.
+   * Valida checksum ANTES de alimentar el buffer de consenso.
+   * Rechaza cualquier código numérico que no pase validación de checksum.
    */
   const processDetection = useCallback(
     (raw: string) => {
       if (scanningLockedRef.current) return;
+
+      const digits = (raw || "").replace(/\D/g, "");
+      if (!digits) return;
+
+      // === Validación estricta por checksum ===
+      // La gran mayoría de productos son EAN-13 (13 dígitos).
+      // Rechazar cualquier código numérico que no pase checksum.
+
+      // 13 dígitos: debe ser EAN-13 válido
+      if (digits.length === 13 && !isValidEan13(digits)) return;
+      // 12 dígitos: debe ser UPC-A válido
+      if (digits.length === 12 && !isValidUpcA(digits)) return;
+      // 8 dígitos: debe ser EAN-8 válido
+      if (digits.length === 8 && !isValidEan8(digits)) return;
+      // Otros largos numéricos sin formato conocido → falso positivo
+      if (/^\d+$/.test(digits) && ![8, 12, 13, 14].includes(digits.length)) return;
 
       const { format, gtin13 } = normalizeBarcode(raw);
 
@@ -285,12 +308,11 @@ export function useBarcodeDetection({
       if (gtin13) {
         normalizedCode = gtin13;
       } else if (format === "EAN-8") {
-        normalizedCode = raw.replace(/\D/g, "");
+        normalizedCode = digits;
       } else if (format === "UNKNOWN") {
-        const digits = raw.replace(/\D/g, "");
-        if (/^\d+$/.test(digits) && digits.length >= 8) {
-          return; // Numérico largo con checksum inválido → falso positivo
-        }
+        // Solo aceptar códigos no-numéricos (alfanuméricos como Code-128)
+        // Los numéricos ya fueron filtrados arriba por checksum
+        if (/^\d+$/.test(digits)) return;
         normalizedCode = raw.trim();
       } else {
         normalizedCode = raw.trim();
