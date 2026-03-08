@@ -54,7 +54,7 @@ import {
   loadDynamicCategories,
   saveDynamicCategories,
 } from "../../../data/categories";
-import { BarcodeScanner } from "../../common/BarcodeScanner";
+import { BarcodeScanner } from "../../common/barcode-scanner";
 import { toast } from "sonner";
 // Normalización eliminada: usar el código tal como se escanea
 import { productService } from "../../../services/product.service";

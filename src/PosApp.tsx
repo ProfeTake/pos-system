@@ -40,7 +40,7 @@ const CashRegisterDialog = lazy(
 // Keep lightweight components as regular imports
 import { ProductCatalog } from "./components/features/catalog/ProductCatalog";
 import { ShoppingCart as Cart } from "./components/features/cart/ShoppingCart";
-import { BarcodeScanner } from "./components/common/BarcodeScanner";
+import { BarcodeScanner } from "./components/common/barcode-scanner";
 import Login from "./components/features/auth/Login";
 import { CashStatusProvider, useCashStatus } from "./hooks/CashStatusContext";
 import { useAuth } from "./hooks/useAuth";
