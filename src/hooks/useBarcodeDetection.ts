@@ -307,26 +307,31 @@ export function useBarcodeDetection({
       const buf = detectionBufferRef.current;
       buf.push({ code: normalizedCode, format, timestamp: now });
 
-      // Limpiar entradas fuera de ventana de 800ms
-      while (buf.length && now - buf[0].timestamp > 800) buf.shift();
+      // Limpiar entradas fuera de ventana de 1200ms
+      while (buf.length && now - buf[0].timestamp > 1200) buf.shift();
 
-      // Criterio 1: 2 lecturas consecutivas iguales en ≤500ms
-      if (buf.length >= 2) {
+      // Criterio 1: 3 lecturas consecutivas iguales en ≤800ms
+      if (buf.length >= 3) {
         const last = buf[buf.length - 1];
-        const prev = buf[buf.length - 2];
-        if (last.code === prev.code && last.timestamp - prev.timestamp <= 500) {
+        const prev1 = buf[buf.length - 2];
+        const prev2 = buf[buf.length - 3];
+        if (
+          last.code === prev1.code &&
+          last.code === prev2.code &&
+          last.timestamp - prev2.timestamp <= 800
+        ) {
           acceptCode(last.code);
           return;
         }
       }
 
-      // Criterio 2: 3+ apariciones en ventana de 800ms
+      // Criterio 2: 4+ apariciones en ventana de 1200ms
       const counts = new Map<string, number>();
       for (const item of buf) {
         counts.set(item.code, (counts.get(item.code) || 0) + 1);
       }
       for (const [code, count] of counts) {
-        if (count >= 3) {
+        if (count >= 4) {
           acceptCode(code);
           return;
         }
@@ -392,8 +397,15 @@ export function useBarcodeDetection({
                 width: 1280,
                 height: 720,
               },
+              // ROI: solo analizar la zona central (reduce falsos positivos)
+              area: {
+                top: "20%",
+                right: "10%",
+                left: "10%",
+                bottom: "20%",
+              },
             },
-            locator: { patchSize: "medium", halfSample: true },
+            locator: { patchSize: "large", halfSample: true },
             numOfWorkers: navigator.hardwareConcurrency
               ? Math.min(navigator.hardwareConcurrency, 4)
               : 2,
@@ -409,10 +421,26 @@ export function useBarcodeDetection({
         );
       });
 
-      // Registrar callback de detección
+      // Registrar callback CON filtro de confianza de QuaggaJS
       Quagga.onDetected((result: any) => {
         const code = String(result?.codeResult?.code || "").trim();
-        if (code) processDetection(code);
+        if (!code) return;
+
+        // Filtrar por confianza: rechazar detecciones con alto error promedio
+        const decodedCodes = result?.codeResult?.decodedCodes;
+        if (Array.isArray(decodedCodes)) {
+          const errors = decodedCodes
+            .filter((d: any) => typeof d.error === "number" && d.error !== 0)
+            .map((d: any) => d.error as number);
+          if (errors.length > 0) {
+            const avgError =
+              errors.reduce((a: number, b: number) => a + b, 0) / errors.length;
+            // Rechazar si error promedio > 15% (menor = más confiable)
+            if (avgError > 0.15) return;
+          }
+        }
+
+        processDetection(code);
       });
 
       setIsDetecting(true);
