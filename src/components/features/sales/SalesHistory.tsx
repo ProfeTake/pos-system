@@ -746,7 +746,7 @@ export function SalesHistory({ sales, onRefresh }: SalesHistoryProps) {
                                 <Eye className="size-4" />
                               </Button>
                             </DialogTrigger>
-                            <DialogContent className="max-w-2xl max-h-[85vh] overflow-auto">
+                            <DialogContent className="sm:max-w-2xl">
                               <DialogHeader>
                                 <DialogTitle>
                                   Detalle de Venta - {sale.id}

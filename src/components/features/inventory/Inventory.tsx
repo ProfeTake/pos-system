@@ -1248,7 +1248,7 @@ export function Inventory({
           setEditDraft(null);
         }}
       >
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Editar producto</DialogTitle>
             <DialogDescription>

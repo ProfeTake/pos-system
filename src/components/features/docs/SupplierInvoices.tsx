@@ -365,7 +365,7 @@ export default function SupplierInvoices() {
                     Nueva Factura
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogContent className="sm:max-w-2xl">
                   <DialogHeader>
                     <DialogTitle>Registrar Nueva Factura</DialogTitle>
                     <DialogDescription>
@@ -715,7 +715,7 @@ export default function SupplierInvoices() {
 
       {/* Dialog Detalles */}
       <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Detalles de Factura</DialogTitle>
           </DialogHeader>

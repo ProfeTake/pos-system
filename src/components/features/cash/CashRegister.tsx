@@ -478,7 +478,7 @@ export default function CashRegisterDialog({
   return (
     <>
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-sm max-h-[80vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Caja</DialogTitle>
           <DialogDescription>

@@ -125,7 +125,7 @@ export function HotkeysHelp() {
 
       {/* Modal de ayuda */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-lg w-[95vw] sm:w-full max-h-[80vh] overflow-hidden flex flex-col p-0">
+        <DialogContent className="sm:max-w-lg sm:p-0 p-0 pb-0 flex flex-col overflow-hidden">
           <DialogHeader className="px-6 pt-6 pb-4 border-b">
             <DialogTitle className="flex items-center gap-2 text-lg">
               <Keyboard className="size-5" />

@@ -45,7 +45,7 @@ export function PriceCalculatorDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-sm max-h-[85vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Calculadora de Precios</DialogTitle>
           <DialogDescription>
