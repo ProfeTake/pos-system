@@ -31,6 +31,7 @@ import {
   FolderOpen,
   Zap,
 } from "lucide-react";
+import { Sheet, SheetContent } from "../../ui/sheet";
 
 export interface CategoryComboboxProps {
   value: string;
@@ -97,6 +98,11 @@ export function CategoryCombobox({
   const [pendingDelete, setPendingDelete] = useState<string | null>(null); // categoría pendiente de eliminar
   const [pendingReset, setPendingReset] = useState(false); // confirmación de reset
 
+  // Mobile detection
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < 640
+  );
+
   const panelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
@@ -113,34 +119,7 @@ export function CategoryCombobox({
 
   const updatePosition = useCallback(() => {
     const trigger = triggerRef.current;
-    if (!trigger) return;
-
-    const isMobile = window.innerWidth < 640;
-
-    if (isMobile) {
-      // En móvil: siempre fixed al body, panel de ancho completo con márgenes
-      const tRect = trigger.getBoundingClientRect();
-      const horizontalPad = 16;
-      const panelWidth = window.innerWidth - horizontalPad * 2;
-      const left = horizontalPad;
-
-      const availableBelow = window.innerHeight - tRect.bottom - 16;
-      const availableAbove = tRect.top - 16;
-      const useBelow = availableBelow >= 180 || availableBelow >= availableAbove;
-      let top: number;
-      let maxHeight: number;
-      if (useBelow) {
-        top = tRect.bottom + 6;
-        maxHeight = Math.max(200, Math.min(availableBelow - 6, 440));
-      } else {
-        maxHeight = Math.max(200, Math.min(availableAbove - 6, 440));
-        top = tRect.top - maxHeight - 6;
-      }
-      setCoords({ top, left, width: panelWidth, maxHeight });
-      setInDialog(false);
-      setDialogEl(null);
-      return;
-    }
+    if (!trigger || isMobile) return; // Mobile uses Sheet, no positioning needed
 
     const dlg = trigger.closest('[role="dialog"]') as HTMLElement | null;
     if (dlg) {
@@ -177,7 +156,7 @@ export function CategoryCombobox({
       setInDialog(false);
       setDialogEl(null);
     }
-  }, []);
+  }, [isMobile]);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -269,6 +248,13 @@ export function CategoryCombobox({
       /*ignore*/
     }
   }, [collapsed]);
+
+  // Detect mobile on resize
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const filterItems = useCallback(
     (arr: string[]) => {
@@ -415,13 +401,14 @@ export function CategoryCombobox({
     });
   }, []);
 
+  // Desktop focus — Sheet handles its own focus via onOpenAutoFocus
   useEffect(() => {
-    if (open) focusInput();
-  }, [open, focusInput]);
+    if (open && !isMobile) focusInput();
+  }, [open, isMobile, focusInput]);
 
-  // Re-enfocar si el portal se mueve (inDialog cambia mientras está abierto)
+  // Re-enfocar si el portal se mueve (inDialog cambia mientras está abierto, solo desktop)
   useEffect(() => {
-    if (open) focusInput();
+    if (open && !isMobile) focusInput();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inDialog]);  
 
@@ -555,7 +542,7 @@ export function CategoryCombobox({
           if (disabled) return;
           const opening = !open;
           setOpen((o) => !o);
-          if (opening) focusInput();
+          if (opening && !isMobile) focusInput();
         }}
         disabled={disabled}
       >
@@ -583,7 +570,7 @@ export function CategoryCombobox({
           }`}
         />
       </Button>
-      {open &&
+      {open && !isMobile &&
         createPortal(
           <div
             ref={panelRef}
@@ -865,6 +852,308 @@ export function CategoryCombobox({
           </div>,
           inDialog && dialogEl ? dialogEl : document.body
         )}
+
+      {/* Mobile: bottom sheet for category selection */}
+      {isMobile && (
+        <Sheet open={open} onOpenChange={setOpen}>
+          <SheetContent
+            side="bottom"
+            className="z-[9999] p-0 flex flex-col rounded-t-xl"
+            overlayClassName="z-[9998]"
+            style={{ height: "80vh", maxHeight: "80vh" }}
+            onOpenAutoFocus={(e) => {
+              e.preventDefault();
+              setTimeout(() => inputRef.current?.focus(), 50);
+            }}
+          >
+            <div
+              ref={panelRef}
+              className="flex flex-col h-full overflow-hidden"
+              onKeyDown={handleKey}
+              role="listbox"
+              aria-activedescendant={
+                focusIndex >= 0 && flat[focusIndex]
+                  ? `cat-${normalize(flat[focusIndex])}`
+                  : undefined
+              }
+            >
+              {/* Drag handle + title */}
+              <div className="flex flex-col items-center pt-3 pb-2 px-4 shrink-0 border-b">
+                <div className="w-10 h-1 rounded-full bg-muted-foreground/30 mb-3" />
+                <h3 className="text-base font-semibold w-full text-left">
+                  Seleccionar categoría
+                </h3>
+              </div>
+
+              <div className="flex flex-col flex-1 min-h-0 p-3 gap-2">
+                {/* Search bar */}
+                <div className="flex items-center gap-2 border rounded-md px-2.5 py-2 bg-background/50 focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all shrink-0">
+                  <Search className="size-4 text-muted-foreground shrink-0" />
+                  <input
+                    ref={inputRef}
+                    value={query}
+                    onChange={(e) => {
+                      setQuery(e.target.value);
+                      setFocusIndex(-1);
+                    }}
+                    placeholder="Buscar o crear categoría..."
+                    className="flex-1 bg-transparent outline-none text-base placeholder:text-muted-foreground/60"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    enterKeyHint="done"
+                  />
+                  {query && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuery("");
+                        setFocusIndex(-1);
+                        inputRef.current?.focus();
+                      }}
+                      className="text-muted-foreground hover:text-foreground p-1 hover:bg-muted rounded"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Group nav */}
+                {visibleGroups.length > 1 && (
+                  <nav className="flex flex-wrap gap-1.5 pb-2 border-b shrink-0">
+                    {visibleGroups.map(
+                      (
+                        g: CategoryGroup & {
+                          filtered: string[];
+                          collapsed: boolean;
+                        },
+                        i: number
+                      ) => {
+                        const isActive = activeGroup === g.title;
+                        const groupColor =
+                          GROUP_COLORS[g.title] || "bg-gray-100 text-gray-700";
+                        return (
+                          <button
+                            key={g.title}
+                            type="button"
+                            onClick={() => {
+                              if (collapsed.has(g.title)) {
+                                setCollapsed((prev) => {
+                                  const n = new Set(prev);
+                                  n.delete(g.title);
+                                  return n;
+                                });
+                              }
+                              setActiveGroup(g.title);
+                              const el = panelRef.current?.querySelector(
+                                `#group-${normalize(g.title)}`
+                              ) as HTMLElement | null;
+                              el?.scrollIntoView({
+                                block: "start",
+                                behavior: "smooth",
+                              });
+                            }}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border text-xs font-medium transition-all ${
+                              isActive
+                                ? `${groupColor} shadow-sm`
+                                : "bg-background hover:bg-muted text-muted-foreground"
+                            } ${collapsed.has(g.title) ? "opacity-50" : ""}`}
+                          >
+                            {GROUP_ICONS[g.title]}
+                            <span className="max-w-[80px] truncate">
+                              {g.title}
+                            </span>
+                            <span className="text-[10px] opacity-70">
+                              {g.filtered.length}
+                            </span>
+                          </button>
+                        );
+                      }
+                    )}
+                  </nav>
+                )}
+
+                {/* Category list */}
+                <div className="flex-1 min-h-0 overflow-y-auto space-y-2 text-sm -mx-1 px-1">
+                  {visibleGroups.length === 0 && (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Search className="size-8 mx-auto mb-2 opacity-40" />
+                      <p className="text-sm font-medium">
+                        No hay coincidencias
+                      </p>
+                      <p className="text-xs mt-1">Intenta con otro término</p>
+                    </div>
+                  )}
+                  {visibleGroups.map(
+                    (
+                      g: CategoryGroup & {
+                        filtered: string[];
+                        collapsed: boolean;
+                      }
+                    ) => (
+                      <div
+                        key={g.title}
+                        className="space-y-0.5"
+                        id={`group-${normalize(g.title)}`}
+                      >
+                        <button
+                          type="button"
+                          aria-expanded={!g.collapsed}
+                          onClick={() =>
+                            setCollapsed((prev) => {
+                              const n = new Set(prev);
+                              if (n.has(g.title)) n.delete(g.title);
+                              else n.add(g.title);
+                              setFocusIndex(-1);
+                              return n;
+                            })
+                          }
+                          className="w-full flex items-center justify-between px-2 py-1.5 text-xs uppercase tracking-wide font-semibold text-muted-foreground hover:text-foreground transition-all hover:bg-muted/50 rounded"
+                        >
+                          <span className="flex items-center gap-1.5">
+                            {g.collapsed ? (
+                              <ChevronRight className="size-3.5" />
+                            ) : (
+                              <ChevronDown className="size-3.5" />
+                            )}
+                            {GROUP_ICONS[g.title]}
+                            <span>{g.title}</span>
+                          </span>
+                          <span className="text-[10px] font-normal opacity-70 bg-muted px-1.5 py-0.5 rounded">
+                            {g.filtered.length}
+                          </span>
+                        </button>
+                        <ul
+                          className={`space-y-0 origin-top transition-all duration-200 ease-out overflow-hidden ${
+                            g.collapsed
+                              ? "max-h-0 opacity-0"
+                              : "max-h-[2000px] opacity-100"
+                          }`}
+                          role="group"
+                          aria-label={g.title}
+                        >
+                          {!g.collapsed &&
+                            g.filtered.map((cat: string) => {
+                              const idx = flat.indexOf(cat);
+                              const selected =
+                                normalize(value) === normalize(cat);
+                              const focused = focusIndex === idx;
+                              const isDynamic = otrosDynamic.includes(cat);
+                              const isDynamicGroup =
+                                g.title === "Dinámicas";
+                              const isJustCreated = justCreated === cat;
+                              return (
+                                <li key={cat} role="none">
+                                  <button
+                                    type="button"
+                                    onClick={() => selectCat(cat)}
+                                    id={`cat-${normalize(cat)}`}
+                                    role="option"
+                                    aria-selected={selected}
+                                    className={`w-full flex items-center gap-2 rounded px-2 py-2.5 text-left text-sm transition-all active:bg-accent ${
+                                      focused
+                                        ? "bg-accent text-accent-foreground"
+                                        : ""
+                                    } ${
+                                      selected
+                                        ? "bg-primary/10 text-primary font-medium"
+                                        : ""
+                                    }`}
+                                  >
+                                    <span className="flex-1 truncate">
+                                      {highlight(cat)}
+                                    </span>
+                                    {isDynamic && !isDynamicGroup && (
+                                      <span className="text-[9px] px-1 py-0.5 rounded border bg-blue-50 text-blue-700 border-blue-200 font-medium">
+                                        Custom
+                                      </span>
+                                    )}
+                                    {selected && (
+                                      <Check className="size-4 shrink-0 text-primary" />
+                                    )}
+                                    {isDynamic && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          requestDelete(cat);
+                                        }}
+                                        className="shrink-0 p-1 hover:bg-destructive/10 rounded text-muted-foreground hover:text-destructive"
+                                      >
+                                        <Trash2 className="size-3.5" />
+                                      </button>
+                                    )}
+                                  </button>
+                                </li>
+                              );
+                            })}
+                        </ul>
+                      </div>
+                    )
+                  )}
+
+                  {/* Create new category */}
+                  {query.trim() && !exists && (
+                    <div className="pt-2 border-t">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="w-full h-10 justify-start gap-2 text-sm"
+                        onClick={createCat}
+                      >
+                        <PlusCircle className="size-4" />
+                        <span className="flex-1 text-left">
+                          Crear{" "}
+                          <span className="font-semibold">
+                            "{query.trim()}"
+                          </span>
+                        </span>
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="pt-2 border-t flex items-center justify-between gap-2 shrink-0">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-xs gap-1 hover:bg-destructive/10 hover:text-destructive"
+                    onClick={requestReset}
+                  >
+                    <RotateCcw className="size-3" />
+                    Restablecer
+                  </Button>
+                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                    <span className="flex items-center gap-1 bg-muted px-1.5 py-0.5 rounded">
+                      <Tag className="size-2.5" />
+                      <span className="font-medium">
+                        {otrosDynamic.length}
+                      </span>
+                    </span>
+                    {query && (
+                      <span className="flex items-center gap-1 bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                        <Search className="size-2.5" />
+                        <span className="font-medium">
+                          {visibleGroups.reduce(
+                            (
+                              acc: number,
+                              g: CategoryGroup & { filtered: string[] }
+                            ) => acc + g.filtered.length,
+                            0
+                          )}
+                        </span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
+
       {/* Modales de confirmación mejorados */}
       <Dialog
         open={!!pendingDelete}
