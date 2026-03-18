@@ -24,6 +24,7 @@ import {
 import { CashOpeningForm } from "./CashOpeningForm";
 import { CashMovementsPanel } from "./CashMovementsPanel";
 import { CashClosingWizard } from "./CashClosingWizard";
+import { ActiveShiftWarningDialog } from "./ActiveShiftWarningDialog";
 
 export interface CashRegisterDialogProps {
   isOpen: boolean;
@@ -53,9 +54,6 @@ export default function CashRegisterDialog({
 
   // Prevent double-printing
   const printedOnCloseRef = useRef(false);
-
-  // Auto-close detection
-  const [wasAutoClosed, setWasAutoClosed] = useState(false);
 
   // Shift change detection
   const [shiftChangeData, setShiftChangeData] = useState<any>(null);
@@ -169,7 +167,6 @@ export default function CashRegisterDialog({
       } else {
         toast.success("Caja abierta");
       }
-      setWasAutoClosed(false);
       try {
         await refresh();
       } catch {}
@@ -327,7 +324,6 @@ export default function CashRegisterDialog({
         printMovementsSummary().catch(() => {});
         printedOnCloseRef.current = true;
       }
-      setWasAutoClosed(true);
       resetUIAfterClose();
       onClose();
     }
@@ -362,6 +358,11 @@ export default function CashRegisterDialog({
   // ─────────────────────────────────────────────────────
   // Shift change handlers
   // ─────────────────────────────────────────────────────
+  const handleShiftChangeGoToClose = async () => {
+    setShiftChangeData(null);
+    await handleStartClose();
+  };
+
   const handleClosePreviousShift = async () => {
     try {
       const b = await getCurrentBalance();
@@ -475,6 +476,7 @@ export default function CashRegisterDialog({
   // Render
   // ─────────────────────────────────────────────────────
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-sm max-h-[80vh] overflow-y-auto">
         <DialogHeader>
@@ -489,7 +491,6 @@ export default function CashRegisterDialog({
             <CashOpeningForm
               onOpen={handleOpenCash}
               loading={openingLoading}
-              wasAutoClosed={wasAutoClosed}
             />
           ) : showClosingWizard ? (
             <CashClosingWizard
@@ -505,37 +506,7 @@ export default function CashRegisterDialog({
           ) : (
             <>
               {/* Alerts: Shift change, countdown, close-due */}
-              {shiftChangeData?.isNewShift && (
-                <Alert className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20 py-2">
-                  <AlertTitle className="text-sm flex items-center gap-2">
-                    Nuevo turno detectado
-                  </AlertTitle>
-                  <AlertDescription className="text-xs mt-1">
-                    {shiftChangeData?.reason && (
-                      <span className="block mb-2 text-amber-700 dark:text-amber-300">
-                        {shiftChangeData.reason}
-                      </span>
-                    )}
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        onClick={handleClosePreviousShift}
-                        disabled={checkingShift || registerLoading}
-                      >
-                        Cerrar turno anterior
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setShiftChangeData(null)}
-                        disabled={checkingShift}
-                      >
-                        Continuar sesión
-                      </Button>
-                    </div>
-                  </AlertDescription>
-                </Alert>
-              )}
+
 
               {showCountdown && secondsLeft !== null && secondsLeft > 0 && (
                 <Alert className="border-orange-500/50 bg-orange-50 dark:bg-orange-950/20 py-2">
@@ -651,5 +622,14 @@ export default function CashRegisterDialog({
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Advertencia: turno activo al intentar abrir una nueva caja */}
+    <ActiveShiftWarningDialog
+      isOpen={!!shiftChangeData?.isNewShift}
+      openedAt={session?.openedAt ?? null}
+      onGoToClose={handleShiftChangeGoToClose}
+      onCancel={() => setShiftChangeData(null)}
+    />
+    </>
   );
 }

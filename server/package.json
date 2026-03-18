@@ -15,7 +15,8 @@
     "db:seed:admin": "tsx src/db/seed.ts",
     "db:seed:sample": "tsx src/scripts/seed.ts",
     "db:seed:demo": "tsx src/scripts/seed-demo.ts",
-    "db:reset": "tsx src/scripts/resetDb.ts --force"
+    "db:reset": "tsx src/scripts/resetDb.ts --force",
+    "db:seed:hours": "tsx src/scripts/seedBusinessHours.ts"
   },
   "keywords": [],
   "author": "",

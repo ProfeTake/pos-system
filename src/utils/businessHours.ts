@@ -1,8 +1,9 @@
 // Utilidades de horario operacional (Chile)
 // Ahora soporta configuración dinámica desde backend (/api/settings businessHours)
-// Fallback por defecto si no hay configuración:
-// - Apertura: 10:00
-// - Cierre: L-J y D a las 01:30; Viernes 03:30; Sábado 01:30
+// Fallback por defecto si no hay configuración (horario real del negocio):
+// - Lun–Jue: 12:37 → 01:00 am (día siguiente)
+// - Vie–Sáb: 12:00 → 03:00 am (día siguiente)
+// - Dom:     12:00 → 01:00 am (día siguiente)
 
 import { apiFetchJSON } from "../lib/api";
 
@@ -79,18 +80,21 @@ export function windowForBaseDay(base: Date): OperationalWindow {
   const v2 = _cachedSettings?.businessHoursV2 as BusinessHoursV2 | undefined;
   if (v2?.week) {
     const row: BHDay | undefined = v2.week[String(d)];
-    const isWeekend = d === 0 || d === 5 || d === 6; // D, V, S
-    const fallback: BHDay = {
-      open: true,
-      openTime: "12:00",
-      closeTime: isWeekend ? "03:15" : "01:00",
-      closeNextDay: true,
+    // Horario real del negocio por día de la semana
+    const dailyFallback: Record<number, BHDay> = {
+      0: { open: true, openTime: "12:00", closeTime: "01:00", closeNextDay: true }, // Domingo
+      1: { open: true, openTime: "12:37", closeTime: "01:00", closeNextDay: true }, // Lunes
+      2: { open: true, openTime: "12:37", closeTime: "01:00", closeNextDay: true }, // Martes
+      3: { open: true, openTime: "12:37", closeTime: "01:00", closeNextDay: true }, // Miércoles
+      4: { open: true, openTime: "12:37", closeTime: "01:00", closeNextDay: true }, // Jueves
+      5: { open: true, openTime: "12:00", closeTime: "03:00", closeNextDay: true }, // Viernes
+      6: { open: true, openTime: "12:00", closeTime: "03:00", closeNextDay: true }, // Sábado
     };
-    const cfg = row ?? fallback;
-    const [oh, om] = (cfg.openTime || "10:00")
+    const cfg = row ?? dailyFallback[d] ?? dailyFallback[1];
+    const [oh, om] = (cfg.openTime || (d === 5 || d === 6 ? "12:00" : d === 0 ? "12:00" : "12:37"))
       .split(":")
       .map((x) => parseInt(x || "0", 10));
-    const [ch, cm] = (cfg.closeTime || (d === 5 ? "03:30" : "01:30"))
+    const [ch, cm] = (cfg.closeTime || (d === 5 || d === 6 ? "03:00" : "01:00"))
       .split(":")
       .map((x) => parseInt(x || "0", 10));
     const open = setTime(baseDay, oh, om);
@@ -106,15 +110,16 @@ export function windowForBaseDay(base: Date): OperationalWindow {
       openingMinute: 0,
       closeMinutesByWeekday: {
         // minutos después de 00:00 del día siguiente
-        // Dom(0), Vie(5), Sáb(6): 03:15 => 195 min
-        // Lun(1)–Jue(4): 01:00 => 60 min
-        "0": 195,
+        // Dom(0):      01:00 => 60 min
+        // Lun(1)–Jue(4): 01:00 => 60 min  (apertura real 12:37 — legacy no diferencia)
+        // Vie(5)–Sáb(6): 03:00 => 180 min
+        "0": 60,
         "1": 60,
         "2": 60,
         "3": 60,
         "4": 60,
-        "5": 195,
-        "6": 195,
+        "5": 180,
+        "6": 180,
       },
     };
     const s = _cachedSettings?.businessHours;

@@ -3,14 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "./components/ui/button";
 import { Toaster } from "./components/ui/sonner";
 import { ShoppingCart, Scan } from "lucide-react";
-import { postJSON } from "./lib/api";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "./components/ui/dialog";
 // Lazy load heavy route components
 const Dashboard = lazy(() =>
   import("./components/features/dashboard/Dashboard").then((m) => ({
@@ -103,50 +95,6 @@ function PosAppContent() {
   const [showPriceCalc, setShowPriceCalc] = useState(false);
   const [showCash, setShowCash] = useState(false);
   
-  // Estado para detectar si hubo cierre automático reciente
-  const [wasAutoClosedRecently, setWasAutoClosedRecently] = useState(false);
-  const [showReopenConfirm, setShowReopenConfirm] = useState(false);
-  const [reopenLoading, setReopenLoading] = useState(false);
-
-  // Escuchar evento de cierre automático
-  useEffect(() => {
-    const onAutoClosed = () => {
-      setWasAutoClosedRecently(true);
-    };
-    window.addEventListener("cash:auto-closed", onAutoClosed);
-    return () => {
-      window.removeEventListener("cash:auto-closed", onAutoClosed);
-    };
-  }, []);
-
-  // Reset del flag cuando se abre una nueva sesión
-  useEffect(() => {
-    if (cashSession) {
-      setWasAutoClosedRecently(false);
-    }
-  }, [cashSession]);
-
-  // Función para reabrir caja con extensión de 2 horas
-  const handleReopenCash = async () => {
-    setShowReopenConfirm(false);
-    setReopenLoading(true);
-    try {
-      // Abrir con windowClose extendido (+2 horas)
-      const extendedClose = new Date(Date.now() + 2 * 60 * 60 * 1000);
-      await postJSON("/api/cash-session/open", {
-        openingAmount: 0, // Sin monto inicial para reapertura rápida
-        windowClose: extendedClose.toISOString(),
-      });
-      toast.success("Caja reabierta (sesión extendida 2 horas)");
-      setWasAutoClosedRecently(false);
-      refreshCashSession();
-    } catch (e: any) {
-      toast.error(e?.message || "No se pudo reabrir la caja");
-    } finally {
-      setReopenLoading(false);
-    }
-  };
-
   // Hook para navegar a SuperAdmin (app separada)
   const navigate = useNavigate();
 
@@ -705,31 +653,12 @@ function PosAppContent() {
       {mustOpen ? (
         <div className="max-w-xl mx-auto p-6 border rounded-lg bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-100">
           <h2 className="text-lg font-semibold mb-2">
-            {wasAutoClosedRecently ? "La caja se cerró automáticamente" : "Debes abrir la caja"}
+            Debes abrir la caja
           </h2>
           <p className="mb-4">
-            {wasAutoClosedRecently 
-              ? "El turno terminó y la caja se cerró automáticamente. Puedes reabrir para extender la sesión 2 horas más."
-              : "Para operar el sistema primero abre la caja. El cierre automático ocurrirá a la hora establecida."
-            }
+            Para operar el sistema primero abre la caja.
           </p>
-          <div className="flex gap-2">
-            {wasAutoClosedRecently ? (
-              <>
-                <Button 
-                  onClick={() => setShowReopenConfirm(true)}
-                  disabled={reopenLoading}
-                >
-                  {reopenLoading ? "Reabriendo..." : "Reabrir caja (+2 hrs)"}
-                </Button>
-                <Button variant="outline" onClick={() => setShowCash(true)}>
-                  Abrir nueva sesión
-                </Button>
-              </>
-            ) : (
-              <Button onClick={() => setShowCash(true)}>Abrir caja ahora</Button>
-            )}
-          </div>
+          <Button onClick={() => setShowCash(true)}>Abrir caja ahora</Button>
         </div>
       ) : (
         renderContent()
@@ -774,34 +703,6 @@ function PosAppContent() {
           }}
         />
       </Suspense>
-      
-      {/* Diálogo de confirmación para reabrir */}
-      <Dialog open={showReopenConfirm} onOpenChange={setShowReopenConfirm}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>¿Reabrir la caja?</DialogTitle>
-            <DialogDescription>
-              La caja se cerró automáticamente al terminar el turno. 
-              Al reabrir, la sesión se extenderá 2 horas más.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex gap-2 justify-end mt-4">
-            <Button 
-              variant="outline" 
-              onClick={() => setShowReopenConfirm(false)}
-              disabled={reopenLoading}
-            >
-              Cancelar
-            </Button>
-            <Button 
-              onClick={handleReopenCash}
-              disabled={reopenLoading}
-            >
-              {reopenLoading ? "Reabriendo..." : "Sí, reabrir"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
       
       <Toaster />
     </MainLayout>
