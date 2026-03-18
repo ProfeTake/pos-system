@@ -406,10 +406,24 @@ export function CategoryCombobox({
     return () => document.removeEventListener("mousedown", h);
   }, [open]);
 
-  // Focus input al abrir
+  // Foco robusto: doble rAF para esperar que el portal se monte/mueva antes de enfocar
+  const focusInput = useCallback(() => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+      });
+    });
+  }, []);
+
   useEffect(() => {
-    if (open) setTimeout(() => inputRef.current?.focus(), 50);
-  }, [open]);
+    if (open) focusInput();
+  }, [open, focusInput]);
+
+  // Re-enfocar si el portal se mueve (inDialog cambia mientras está abierto)
+  useEffect(() => {
+    if (open) focusInput();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inDialog]);  
 
   // Keyboard navigation
   const handleKey = (e: React.KeyboardEvent) => {
@@ -537,7 +551,12 @@ export function CategoryCombobox({
         className={`w-full justify-between transition-all hover:border-primary/50 ${
           open ? "ring-2 ring-primary/20 border-primary" : ""
         } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
-        onClick={() => !disabled && setOpen((o) => !o)}
+        onClick={() => {
+          if (disabled) return;
+          const opening = !open;
+          setOpen((o) => !o);
+          if (opening) focusInput();
+        }}
         disabled={disabled}
       >
         <span className="flex items-center gap-2 flex-1 truncate">
