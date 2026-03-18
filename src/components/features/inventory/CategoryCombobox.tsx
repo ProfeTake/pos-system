@@ -114,6 +114,34 @@ export function CategoryCombobox({
   const updatePosition = useCallback(() => {
     const trigger = triggerRef.current;
     if (!trigger) return;
+
+    const isMobile = window.innerWidth < 640;
+
+    if (isMobile) {
+      // En móvil: siempre fixed al body, panel de ancho completo con márgenes
+      const tRect = trigger.getBoundingClientRect();
+      const horizontalPad = 16;
+      const panelWidth = window.innerWidth - horizontalPad * 2;
+      const left = horizontalPad;
+
+      const availableBelow = window.innerHeight - tRect.bottom - 16;
+      const availableAbove = tRect.top - 16;
+      const useBelow = availableBelow >= 180 || availableBelow >= availableAbove;
+      let top: number;
+      let maxHeight: number;
+      if (useBelow) {
+        top = tRect.bottom + 6;
+        maxHeight = Math.max(200, Math.min(availableBelow - 6, 440));
+      } else {
+        maxHeight = Math.max(200, Math.min(availableAbove - 6, 440));
+        top = tRect.top - maxHeight - 6;
+      }
+      setCoords({ top, left, width: panelWidth, maxHeight });
+      setInDialog(false);
+      setDialogEl(null);
+      return;
+    }
+
     const dlg = trigger.closest('[role="dialog"]') as HTMLElement | null;
     if (dlg) {
       // posicion absoluta relativa al dialog
@@ -126,8 +154,8 @@ export function CategoryCombobox({
       if (left > maxLeft) left = Math.max(16, maxLeft);
 
       // Calcular altura máxima disponible dentro del dialog
-      const availableHeight = dRect.bottom - tRect.bottom - 24; // 24px de margen inferior
-      const maxHeight = Math.min(Math.max(availableHeight, 150), 320); // entre 150px y 320px
+      const availableHeight = dRect.bottom - tRect.bottom - 24;
+      const maxHeight = Math.min(Math.max(availableHeight, 150), 320);
 
       setCoords({ top, left, width, maxHeight });
       setInDialog(true);
@@ -542,7 +570,7 @@ export function CategoryCombobox({
             ref={panelRef}
             className={`${
               inDialog ? "absolute" : "fixed"
-            } z-[1000] rounded-lg border bg-popover shadow-xl p-3 overflow-hidden flex flex-col animate-in fade-in-0 slide-in-from-top-2 duration-200`}
+            } z-[9999] rounded-lg border bg-popover shadow-xl p-3 overflow-hidden flex flex-col animate-in fade-in-0 slide-in-from-top-2 duration-200`}
             style={{
               top: `${coords.top}px`,
               left: `${coords.left}px`,
@@ -628,7 +656,7 @@ export function CategoryCombobox({
                         title={`${g.title} (Alt+${i + 1})`}
                       >
                         {GROUP_ICONS[g.title]}
-                        <span className="max-w-[60px] truncate">{g.title}</span>
+                        <span className="max-w-[80px] sm:max-w-[60px] truncate">{g.title}</span>
                         <span className="text-[9px] opacity-70">
                           {g.filtered.length}
                         </span>
