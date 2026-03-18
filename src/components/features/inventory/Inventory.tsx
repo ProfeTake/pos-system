@@ -40,6 +40,11 @@ import {
   ArrowUpDown,
   PlusCircle,
   Save,
+  ScanBarcode, 
+  DollarSign, 
+  Tag, 
+  Layers, 
+  LineChart,
 } from "lucide-react";
 import { Product, EstadoProducto } from "../../../types";
 import { CategoryCombobox } from "./CategoryCombobox";
@@ -1248,227 +1253,235 @@ export function Inventory({
           setEditDraft(null);
         }}
       >
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Editar producto</DialogTitle>
+        <DialogContent className="sm:max-w-xl p-0 overflow-hidden flex flex-col max-h-[90vh]">
+          <DialogHeader className="px-6 py-4 border-b bg-muted/30 shrink-0">
+            <DialogTitle className="flex items-center gap-2">
+              <Package className="w-5 h-5 text-primary" />
+              Editar producto
+            </DialogTitle>
             <DialogDescription>
-              Ajusta los datos del producto.
+              Ajusta los datos del producto existente.
             </DialogDescription>
           </DialogHeader>
+
           {editingProduct && editDraft && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <div>
-                  <label>Nombre</label>
-                  <Input
-                    ref={editNameRef}
-                    value={editDraft.name as string}
-                    onChange={(e) =>
-                      setEditDraft((d) => ({ ...d!, name: e.target.value }))
-                    }
-                  />
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6 scrollbar-thin">
+              {/* SECCIÓN: Identificación */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold flex items-center gap-2 text-muted-foreground uppercase tracking-wider">
+                  <ScanBarcode className="w-4 h-4" />
+                  Identificación
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2 space-y-1.5">
+                    <label>Código Barra</label>
+                    <Input value={editDraft.barCode as string} disabled className="h-10 bg-muted/50" />
+                  </div>
+                  
+                  <div className="sm:col-span-2 space-y-1.5">
+                    <label>Nombre</label>
+                    <Input
+                      ref={editNameRef}
+                      value={editDraft.name as string}
+                      onChange={(e) => setEditDraft((d) => ({ ...d!, name: e.target.value }))}
+                      className="h-10"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2 space-y-1.5">
+                    <label>Categoría</label>
+                    <CategoryCombobox
+                      value={editDraft.category as string}
+                      onChange={(val) => setEditDraft((d) => ({ ...d!, category: val }))}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label>Categoría</label>
-                  <CategoryCombobox
-                    value={editDraft.category as string}
-                    onChange={(val) =>
-                      setEditDraft((d) => ({ ...d!, category: val }))
-                    }
-                  />
-                </div>
-                <div>
-                  <label>Stock</label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={
-                      editDraft.stock !== undefined
-                        ? String(editDraft.stock)
-                        : ""
-                    }
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      setEditDraft((d) => ({
-                        ...(d as any),
-                        stock: raw === "" ? undefined : parseInt(raw) || 0,
-                      }));
-                    }}
-                  />
-                </div>
-                <div>
-                  <label>Stock mínimo</label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={
-                      editDraft.minStock !== undefined
-                        ? String(editDraft.minStock)
-                        : ""
-                    }
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      setEditDraft((d) => ({
-                        ...(d as any),
-                        minStock: raw === "" ? undefined : parseInt(raw) || 0,
-                      }));
-                    }}
-                  />
-                </div>
-                <div>
-                  <label>Costo</label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={
-                      editDraft.cost !== undefined ? String(editDraft.cost) : ""
-                    }
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      const costNum =
-                        raw === "" ? 0 : parseInt(raw || "0") || 0;
-                      setEditDraft((d) => {
-                        const margin = Number((d as any)?.marginPct ?? 0);
-                        const price = Math.round(costNum * (1 + margin / 100));
-                        return {
+              </div>
+
+              {/* SECCIÓN: Comercial / Precios */}
+              <div className="space-y-4 pt-4 border-t">
+                <h3 className="text-sm font-semibold flex items-center gap-2 text-muted-foreground uppercase tracking-wider">
+                  <DollarSign className="w-4 h-4" />
+                  Precios y Margen
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <label>Costo ($)</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={editDraft.cost !== undefined ? String(editDraft.cost) : ""}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        const costNum = raw === "" ? 0 : parseInt(raw || "0") || 0;
+                        setEditDraft((d) => {
+                          const margin = Number((d as any)?.marginPct ?? 0);
+                          const price = Math.round(costNum * (1 + margin / 100));
+                          return { ...(d as any), cost: raw === "" ? undefined : costNum, price } as any;
+                        });
+                      }}
+                      className="h-10"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label>Margen (%)</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={editDraft.marginPct !== undefined ? String(editDraft.marginPct) : ""}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        const margin = raw === "" ? 0 : parseInt(raw || "0") || 0;
+                        setEditDraft((d) => {
+                          const cost = Number((d as any)?.cost ?? 0);
+                          const price = Math.round(cost * (1 + margin / 100));
+                          return { ...(d as any), marginPct: raw === "" ? undefined : margin, price } as any;
+                        });
+                      }}
+                      className="h-10 border-blue-200 focus-visible:ring-blue-500/30"
+                    />
+                  </div>
+                  <div className="col-span-2 sm:col-span-1 space-y-1.5">
+                    <label className="text-primary font-medium">Precio ($)</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={editDraft.price !== undefined ? String(editDraft.price) : ""}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setEditDraft((d) => ({
                           ...(d as any),
-                          cost: raw === "" ? undefined : costNum,
-                          price,
-                        } as any;
-                      });
-                    }}
-                  />
+                          price: raw === "" ? undefined : parseInt(raw || "0") || 0,
+                        }));
+                      }}
+                      className="h-10 border-primary font-bold text-primary focus-visible:ring-primary/30"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label>Margen (%)</label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={
-                      editDraft.marginPct !== undefined
-                        ? String(editDraft.marginPct)
-                        : ""
-                    }
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      const margin = raw === "" ? 0 : parseInt(raw || "0") || 0;
-                      setEditDraft((d) => {
-                        const cost = Number((d as any)?.cost ?? 0);
-                        const price = Math.round(cost * (1 + margin / 100));
-                        return {
+
+                <div className="bg-primary/5 border border-primary/10 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm">
+                  <div className="flex items-center gap-2">
+                    <LineChart className="w-4 h-4 text-emerald-500" />
+                    <span className="text-muted-foreground">Ganancia por unidad:</span>
+                    <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                      ${((editDraft.price ?? 0) - (editDraft.cost ?? 0)).toLocaleString("es-CL")}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 border-t sm:border-t-0 sm:border-l border-primary/10 pt-2 sm:pt-0 sm:pl-3">
+                    <span className="text-muted-foreground">Potencial Total:</span>
+                    <span className="font-bold">
+                      ${((editDraft.stock ?? 0) * (editDraft.price ?? 0)).toLocaleString("es-CL")}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECCIÓN: Inventario y Detalles */}
+              <div className="space-y-4 pt-4 border-t">
+                <h3 className="text-sm font-semibold flex items-center gap-2 text-muted-foreground uppercase tracking-wider">
+                  <Layers className="w-4 h-4" />
+                  Inventario y Formato
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label>Stock</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={editDraft.stock !== undefined ? String(editDraft.stock) : ""}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setEditDraft((d) => ({
                           ...(d as any),
-                          marginPct: raw === "" ? undefined : margin,
-                          price,
-                        } as any;
-                      });
-                    }}
-                  />
-                </div>
-                <div>
-                  <label>Precio</label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={
-                      editDraft.price !== undefined
-                        ? String(editDraft.price)
-                        : ""
-                    }
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      setEditDraft((d) => ({
-                        ...(d as any),
-                        price:
-                          raw === "" ? undefined : parseInt(raw || "0") || 0,
-                      }));
-                    }}
-                  />
-                </div>
-                <div>
-                  <label>Código Barra</label>
-                  <Input
-                    value={editDraft.barCode as string}
-                    disabled
-                    onChange={() => {}}
-                  />
-                </div>
-                <div>
-                  <label>Unidad</label>
-                  <Select
-                    value={
-                      editDraft.measureUnit ||
-                      editingProduct.measureUnit ||
-                      "ml"
-                    }
-                    onValueChange={(val) =>
-                      setEditDraft((d) => ({ ...d!, measureUnit: val as any }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Unidad" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ml">ml</SelectItem>
-                      <SelectItem value="g">g</SelectItem>
-                      <SelectItem value="none">Ninguna</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label>Cantidad</label>
-                  <Input
-                    type="number"
-                    min={0}
-                    disabled={
-                      (editDraft.measureUnit || editingProduct.measureUnit) ===
-                      "none"
-                    }
-                    value={
-                      editDraft.ml !== undefined ? String(editDraft.ml) : ""
-                    }
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      setEditDraft((d) => ({
-                        ...(d as any),
-                        ml: raw === "" ? undefined : parseInt(raw || "0") || 0,
-                      }));
-                    }}
-                  />
-                </div>
-                <div>
-                  <label>Proveedor</label>
-                  <Input
-                    value={(editDraft.supplier as string) || ""}
-                    onChange={(e) =>
-                      setEditDraft((d) => ({ ...d!, supplier: e.target.value }))
-                    }
-                    placeholder="Nombre del proveedor"
-                  />
-                </div>
-                <div className="sm:col-span-2 text-xs text-muted-foreground">
-                  Valor total:{" "}
-                  <b>
-                    $
-                    {(
-                      (editDraft.stock ?? 0) * (editDraft.price ?? 0)
-                    ).toLocaleString("es-CL")}
-                  </b>
+                          stock: raw === "" ? undefined : parseInt(raw) || 0,
+                        }));
+                      }}
+                      className="h-10"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label>Stock mínimo</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={editDraft.minStock !== undefined ? String(editDraft.minStock) : ""}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setEditDraft((d) => ({
+                          ...(d as any),
+                          minStock: raw === "" ? undefined : parseInt(raw) || 0,
+                        }));
+                      }}
+                      className="h-10"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label>Und. Medida</label>
+                    <Select
+                      value={editDraft.measureUnit || editingProduct.measureUnit || "ml"}
+                      onValueChange={(val) => setEditDraft((d) => ({ ...d!, measureUnit: val as any }))}
+                    >
+                      <SelectTrigger className="h-10">
+                        <SelectValue placeholder="Unidad" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ml">Mililitros (ml)</SelectItem>
+                        <SelectItem value="g">Gramos (g)</SelectItem>
+                        <SelectItem value="none">Por unidad</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label>Contenido</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      disabled={(editDraft.measureUnit || editingProduct.measureUnit) === "none"}
+                      value={editDraft.ml !== undefined ? String(editDraft.ml) : ""}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setEditDraft((d) => ({
+                          ...(d as any),
+                          ml: raw === "" ? undefined : parseInt(raw || "0") || 0,
+                        }));
+                      }}
+                      className={`h-10 ${(editDraft.measureUnit || editingProduct.measureUnit) === 'none' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    />
+                  </div>
+
+                  <div className="col-span-2 space-y-1.5">
+                    <label>Proveedor (Opcional)</label>
+                    <div className="relative">
+                      <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        value={(editDraft.supplier as string) || ""}
+                        onChange={(e) => setEditDraft((d) => ({ ...d!, supplier: e.target.value }))}
+                        placeholder="Ej: Distribuidora CCU"
+                        className="h-10 pl-9"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           )}
-          <DialogFooter>
+
+          <div className="bg-muted/30 border-t px-6 py-4 flex flex-col-reverse sm:flex-row justify-end gap-3 shrink-0">
             <Button
               variant="outline"
               onClick={() => {
                 setEditingProduct(null);
                 setEditDraft(null);
               }}
+              className="w-full sm:w-auto h-10"
             >
               Cancelar
             </Button>
-            <Button onClick={handleUpdateProduct}>Guardar cambios</Button>
-          </DialogFooter>
+            <Button onClick={handleUpdateProduct} className="w-full sm:w-auto h-10 gap-2 font-medium">
+              <Save className="w-4 h-4" /> Guardar cambios
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

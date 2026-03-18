@@ -21,7 +21,16 @@ import type { Product, EstadoProducto } from "../../../types";
 import { productService } from "../../../services/product.service";
 import { productLookupService } from "../../../services/productLookup.service";
 import { productCreateSchema, safeParse } from "../../../lib/schemas";
-import { Loader, Search } from "lucide-react";
+import { 
+  Loader, 
+  Search, 
+  Package, 
+  DollarSign, 
+  Tag, 
+  ScanBarcode, 
+  Layers, 
+  LineChart 
+} from "lucide-react";
 import { Label } from "../../ui/label";
 
 interface NewProductData {
@@ -322,255 +331,252 @@ export function AddProductDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Agregar nuevo producto</DialogTitle>
+      <DialogContent className="sm:max-w-xl p-0 overflow-hidden flex flex-col max-h-[90vh]">
+        <DialogHeader className="px-6 py-4 border-b bg-muted/30 shrink-0">
+          <DialogTitle className="flex items-center gap-2">
+            <Package className="w-5 h-5 text-primary" />
+            Agregar nuevo producto
+          </DialogTitle>
           <DialogDescription>
-            Completa los datos para agregar un producto.
+            Completa los datos detallados del nuevo artículo.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-            {/* Código de barras primero - ancho completo */}
-            <div className="sm:col-span-2">
-              <Label htmlFor="barcode">Código de Barras</Label>
-              <div className="relative mt-1.5">
-                <Input
-                  id="barcode"
-                  value={newProduct.BarCode}
-                  onChange={(e) =>
-                    setNewProduct((p) => ({ ...p, BarCode: e.target.value }))
-                  }
-                  placeholder="Escanear código..."
-                  className={`font-mono pr-10 ${
-                    barcodeError
-                      ? "border-red-500 focus-visible:ring-red-500"
-                      : ""
-                  }`}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      handleLookupBarcode();
+        
+        {/* Scrollable form content */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6 scrollbar-thin">
+          
+          {/* SECCIÓN: Identificación */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold flex items-center gap-2 text-muted-foreground uppercase tracking-wider">
+              <ScanBarcode className="w-4 h-4" />
+              Identificación
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2 space-y-1.5">
+                <Label htmlFor="barcode">Código de Barras</Label>
+                <div className="relative">
+                  <Input
+                    id="barcode"
+                    value={newProduct.BarCode}
+                    onChange={(e) =>
+                      setNewProduct((p) => ({ ...p, BarCode: e.target.value }))
                     }
-                  }}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleLookupBarcode}
-                  disabled={
-                    isLoadingLookup ||
-                    isValidatingBarcode ||
-                    !newProduct.BarCode
-                  }
-                  title="Buscar información del producto"
-                  className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
-                >
-                  {isLoadingLookup || isValidatingBarcode ? (
-                    <Loader className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Search className="h-4 w-4" />
-                  )}
-                </Button>
+                    placeholder="Escanear o ingresar código..."
+                    className={`font-mono pr-10 h-10 ${
+                      barcodeError ? "border-destructive focus-visible:ring-destructive" : ""
+                    }`}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleLookupBarcode();
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleLookupBarcode}
+                    disabled={isLoadingLookup || isValidatingBarcode || !newProduct.BarCode}
+                    title="Buscar información del producto"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 hover:bg-primary/10 hover:text-primary transition-colors"
+                  >
+                    {isLoadingLookup || isValidatingBarcode ? (
+                      <Loader className="w-4 h-4 animate-spin text-primary" />
+                    ) : (
+                      <Search className="w-4 h-4" />
+                    )}
+                  </Button>
+                </div>
+                {barcodeError && <p className="text-xs text-destructive font-medium">{barcodeError}</p>}
               </div>
-              {barcodeError && (
-                <p className="text-xs text-red-500 mt-1">{barcodeError}</p>
-              )}
-            </div>
 
-            <div>
-              <Label>Nombre</Label>
-              <Input
-                ref={newProductNameRef}
-                value={newProduct.name}
-                onChange={(e) =>
-                  setNewProduct((p) => ({ ...p, name: e.target.value }))
-                }
-                className="mt-1.5"
-              />
-            </div>
-            <div>
-              <Label>Categoría</Label>
-              <div className="mt-1.5">
+              <div className="sm:col-span-2 space-y-1.5">
+                <Label>Nombre del Producto</Label>
+                <Input
+                  ref={newProductNameRef}
+                  value={newProduct.name}
+                  onChange={(e) => setNewProduct((p) => ({ ...p, name: e.target.value }))}
+                  placeholder="Ej: Vino Casillero del Diablo 750ml"
+                  className="h-10"
+                />
+              </div>
+
+              <div className="sm:col-span-2 space-y-1.5">
+                <Label>Categoría</Label>
                 <CategoryCombobox
                   value={newProduct.category}
-                  onChange={(val) =>
-                    setNewProduct((p) => ({ ...p, category: val }))
-                  }
+                  onChange={(val) => setNewProduct((p) => ({ ...p, category: val }))}
                 />
               </div>
             </div>
-            <div>
-              <Label>Stock</Label>
-              <Input
-                type="number"
-                min={0}
-                value={String(newProduct.stock)}
-                onChange={(e) =>
-                  setNewProduct((p) => ({
-                    ...p,
-                    stock: parseInt(e.target.value || "0") || 0,
-                  }))
-                }
-                className="mt-1.5"
-              />
+          </div>
+
+          {/* SECCIÓN: Comercial / Precios */}
+          <div className="space-y-4 pt-4 border-t">
+            <h3 className="text-sm font-semibold flex items-center gap-2 text-muted-foreground uppercase tracking-wider">
+              <DollarSign className="w-4 h-4" />
+              Precios y Margen
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <Label>Costo ($)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={String(newProduct.cost)}
+                  onChange={(e) => {
+                    const cost = parseInt(e.target.value || "0") || 0;
+                    setNewProduct((p) => {
+                      const price = Math.round(cost * (1 + (p.marginPct || 0) / 100));
+                      return { ...p, cost, price };
+                    });
+                  }}
+                  className="h-10"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Margen (%)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={String(newProduct.marginPct)}
+                  onChange={(e) => {
+                    const marginPct = parseInt(e.target.value || "0") || 0;
+                    setNewProduct((p) => {
+                      const price = Math.round((p.cost || 0) * (1 + marginPct / 100));
+                      return { ...p, marginPct, price };
+                    });
+                  }}
+                  className="h-10 border-blue-200 focus-visible:ring-blue-500/30"
+                />
+              </div>
+              <div className="col-span-2 sm:col-span-1 space-y-1.5">
+                <Label className="text-primary font-medium">Precio Venta ($)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={String(newProduct.price)}
+                  onChange={(e) => {
+                    const price = parseInt(e.target.value || "0") || 0;
+                    setNewProduct((p) => {
+                      const cost = Math.round(price / (1 + (p.marginPct || 30) / 100));
+                      return { ...p, price, cost };
+                    });
+                  }}
+                  className="h-10 border-primary font-bold text-primary focus-visible:ring-primary/30"
+                />
+              </div>
             </div>
-            <div>
-              <Label>Stock mínimo</Label>
-              <Input
-                type="number"
-                min={0}
-                value={String(newProduct.minStock)}
-                onChange={(e) =>
-                  setNewProduct((p) => ({
-                    ...p,
-                    minStock: parseInt(e.target.value || "0") || 0,
-                  }))
-                }
-                className="mt-1.5"
-              />
+            
+            <div className="bg-primary/5 border border-primary/10 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm">
+              <div className="flex items-center gap-2">
+                <LineChart className="w-4 h-4 text-emerald-500" />
+                <span className="text-muted-foreground">Ganancia por unidad:</span>
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                  ${(newProduct.price - newProduct.cost).toLocaleString("es-CL")}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 border-t sm:border-t-0 sm:border-l border-primary/10 pt-2 sm:pt-0 sm:pl-3">
+                <span className="text-muted-foreground">Potencial Total:</span>
+                <span className="font-bold">
+                  ${(newProduct.stock * newProduct.price).toLocaleString("es-CL")}
+                </span>
+              </div>
             </div>
-            <div>
-              <Label>Costo</Label>
-              <Input
-                type="number"
-                min={0}
-                value={String(newProduct.cost)}
-                onChange={(e) => {
-                  const cost = parseInt(e.target.value || "0") || 0;
-                  setNewProduct((p) => {
-                    const price = Math.round(
-                      cost * (1 + (p.marginPct || 0) / 100)
-                    );
-                    return { ...p, cost, price };
-                  });
-                }}
-                className="mt-1.5"
-              />
-            </div>
-            <div>
-              <Label>Margen (%)</Label>
-              <Input
-                type="number"
-                min={0}
-                value={String(newProduct.marginPct)}
-                onChange={(e) => {
-                  const marginPct = parseInt(e.target.value || "0") || 0;
-                  setNewProduct((p) => {
-                    const price = Math.round(
-                      (p.cost || 0) * (1 + marginPct / 100)
-                    );
-                    return { ...p, marginPct, price };
-                  });
-                }}
-                className="mt-1.5"
-              />
-            </div>
-            <div>
-              <Label>Precio</Label>
-              <Input
-                type="number"
-                min={0}
-                value={String(newProduct.price)}
-                onChange={(e) => {
-                  const price = parseInt(e.target.value || "0") || 0;
-                  setNewProduct((p) => {
-                    const cost = Math.round(
-                      price / (1 + (p.marginPct || 30) / 100)
-                    );
-                    return { ...p, price, cost };
-                  });
-                }}
-                className="mt-1.5"
-              />
-            </div>
-            <div>
-              <Label>Unidad</Label>
-              <div className="mt-1.5">
+          </div>
+
+          {/* SECCIÓN: Inventario y Detalles */}
+          <div className="space-y-4 pt-4 border-t">
+            <h3 className="text-sm font-semibold flex items-center gap-2 text-muted-foreground uppercase tracking-wider">
+              <Layers className="w-4 h-4" />
+              Inventario y Formato
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label>Stock Inicial</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={String(newProduct.stock)}
+                  onChange={(e) =>
+                    setNewProduct((p) => ({ ...p, stock: parseInt(e.target.value || "0") || 0 }))
+                  }
+                  className="h-10"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Stock Mínimo</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={String(newProduct.minStock)}
+                  onChange={(e) =>
+                    setNewProduct((p) => ({ ...p, minStock: parseInt(e.target.value || "0") || 0 }))
+                  }
+                  className="h-10"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Und. Medida</Label>
                 <Select
                   value={newProduct.measureUnit}
-                  onValueChange={(val) =>
-                    setNewProduct((p) => ({ ...p, measureUnit: val as any }))
-                  }
+                  onValueChange={(val) => setNewProduct((p) => ({ ...p, measureUnit: val as any }))}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="h-10">
                     <SelectValue placeholder="Unidad" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ml">ml</SelectItem>
-                    <SelectItem value="g">g</SelectItem>
-                    <SelectItem value="none">Ninguna</SelectItem>
+                    <SelectItem value="ml">Mililitros (ml)</SelectItem>
+                    <SelectItem value="g">Gramos (g)</SelectItem>
+                    <SelectItem value="none">Por unidad</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-            <div>
-              <Label>Cantidad</Label>
-              <Input
-                type="number"
-                min={0}
-                disabled={newProduct.measureUnit === "none"}
-                value={String(newProduct.ml)}
-                onChange={(e) =>
-                  setNewProduct((p) => ({
-                    ...p,
-                    ml: parseInt(e.target.value || "0") || 0,
-                  }))
-                }
-                className="mt-1.5"
-              />
-            </div>
-            <div>
-              <Label>Proveedor</Label>
-              <Input
-                value={newProduct.supplier}
-                onChange={(e) =>
-                  setNewProduct((p) => ({ ...p, supplier: e.target.value }))
-                }
-                placeholder="Nombre del proveedor"
-                className="mt-1.5"
-              />
-            </div>
-            <div className="flex items-end pb-2">
-              <div className="text-xs text-muted-foreground">
-                <div>
-                  Ganancia:{" "}
-                  <span className="text-emerald-400 font-medium">
-                    $
-                    {(newProduct.price - newProduct.cost).toLocaleString(
-                      "es-CL"
-                    )}
-                  </span>{" "}
-                  / un
-                </div>
-                <div>
-                  Total:{" "}
-                  <span className="font-medium">
-                    $
-                    {(newProduct.stock * newProduct.price).toLocaleString(
-                      "es-CL"
-                    )}
-                  </span>
+              <div className="space-y-1.5">
+                <Label>Contenido</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  disabled={newProduct.measureUnit === "none"}
+                  value={String(newProduct.ml)}
+                  onChange={(e) =>
+                    setNewProduct((p) => ({ ...p, ml: parseInt(e.target.value || "0") || 0 }))
+                  }
+                  className={`h-10 ${newProduct.measureUnit === 'none' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                />
+              </div>
+
+              <div className="col-span-2 space-y-1.5">
+                <Label>Proveedor (Opcional)</Label>
+                <div className="relative">
+                  <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    value={newProduct.supplier}
+                    onChange={(e) => setNewProduct((p) => ({ ...p, supplier: e.target.value }))}
+                    placeholder="Ej: Distribuidora CCU"
+                    className="h-10 pl-9"
+                  />
                 </div>
               </div>
             </div>
           </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSave} disabled={isLoading}>
-              {isLoading ? (
-                <>
-                  <Loader className="mr-2 h-4 w-4 animate-spin" />
-                  Guardando...
-                </>
-              ) : (
-                "Guardar"
-              )}
-            </Button>
-          </div>
+          
+        </div>
+
+        {/* Footer sticky */}
+        <div className="bg-muted/30 border-t px-6 py-4 flex flex-col-reverse sm:flex-row justify-end gap-3 shrink-0">
+          <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full sm:w-auto h-10">
+            Cancelar
+          </Button>
+          <Button onClick={handleSave} disabled={isLoading} className="w-full sm:w-auto h-10 gap-2 font-medium">
+            {isLoading ? (
+              <><Loader className="w-4 h-4 animate-spin" /> Guardando...</>
+            ) : (
+              <><Package className="w-4 h-4" /> Guardar Producto</>
+            )}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
