@@ -1257,7 +1257,7 @@ export function Inventory({
           </DialogHeader>
           {editingProduct && editDraft && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label>Nombre</label>
                   <Input
@@ -1445,7 +1445,7 @@ export function Inventory({
                     placeholder="Nombre del proveedor"
                   />
                 </div>
-                <div className="col-span-2 text-xs text-muted-foreground">
+                <div className="sm:col-span-2 text-xs text-muted-foreground">
                   Valor total:{" "}
                   <b>
                     $

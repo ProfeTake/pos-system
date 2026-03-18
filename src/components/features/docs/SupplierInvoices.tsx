@@ -373,7 +373,7 @@ export default function SupplierInvoices() {
                     </DialogDescription>
                   </DialogHeader>
                   <div className="grid gap-4 py-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="invoiceNumber">Número de Factura *</Label>
                         <Input
@@ -398,7 +398,7 @@ export default function SupplierInvoices() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="invoiceDate">Fecha Emisión *</Label>
                         <Input

@@ -330,9 +330,9 @@ export function AddProductDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             {/* Código de barras primero - ancho completo */}
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <Label htmlFor="barcode">Código de Barras</Label>
               <div className="relative mt-1.5">
                 <Input
