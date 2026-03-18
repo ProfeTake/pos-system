@@ -579,8 +579,6 @@ export const demoCategoryThresholds = [
 
 // ── Analíticas ────────────────────────────────────────────────────────────
 
-import { demoProducts } from "./products";
-
 const todaySales = demoSales.filter(
   (s) => s.date.toDateString() === new Date(2026, 1, 25).toDateString()
 );

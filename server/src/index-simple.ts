@@ -50,63 +50,6 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// ── ENDPOINT TEMPORAL DE RESET ─────────────────────────────────────────────
-// Usar UNA SOLA VEZ para limpiar la BD y crear usuario inicial.
-// Llamar: GET /api/_setup?secret=RESET_PUNTO3_2026
-// ELIMINAR este bloque después de ejecutar.
-app.get("/api/_setup", async (req: express.Request, res: express.Response) => {
-  if (req.query.secret !== "RESET_PUNTO3_2026") {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-  try {
-    const { db } = await import("./db");
-    const { sql } = await import("drizzle-orm");
-    const bcrypt = await import("bcryptjs");
-
-    await db.execute(sql`SET FOREIGN_KEY_CHECKS = 0`);
-
-    const tables = [
-      "supplier_invoice_payments","supplier_invoice_items","supplier_invoices",
-      "return_items","returns","customer_debts","customers","fiscal_documents",
-      "promotions","cash_movements","cash_sessions","sale_items","sales",
-      "products","category_stock_thresholds","audit_log","settings","users",
-    ];
-    for (const t of tables) {
-      await db.execute(sql.raw(`TRUNCATE TABLE \`${t}\``));
-    }
-
-    await db.execute(sql`SET FOREIGN_KEY_CHECKS = 1`);
-
-    const hash = await bcrypt.hash("punto123", 10);
-    await db.execute(
-      sql`INSERT INTO users (id, username, password_hash, role, full_name, active)
-          VALUES (1, 'punto3', ${hash}, 'admin', 'Punto 3', 1)`
-    );
-
-    const hours = {
-      week: {
-        "0": { open: true, openTime: "12:00", closeTime: "01:00", closeNextDay: true },
-        "1": { open: true, openTime: "12:37", closeTime: "01:00", closeNextDay: true },
-        "2": { open: true, openTime: "12:37", closeTime: "01:00", closeNextDay: true },
-        "3": { open: true, openTime: "12:37", closeTime: "01:00", closeNextDay: true },
-        "4": { open: true, openTime: "12:37", closeTime: "01:00", closeNextDay: true },
-        "5": { open: true, openTime: "12:00", closeTime: "03:00", closeNextDay: true },
-        "6": { open: true, openTime: "12:00", closeTime: "03:00", closeNextDay: true },
-      },
-    };
-    await db.execute(
-      sql`INSERT INTO settings (\`key\`, value) VALUES ('businessHoursV2', ${JSON.stringify(hours)})`
-    );
-
-    return res.json({
-      ok: true,
-      message: "Base de datos reseteada. Usuario: punto3 / punto123",
-    });
-  } catch (err: any) {
-    return res.status(500).json({ error: err?.message || "Error" });
-  }
-});
-// ── FIN ENDPOINT TEMPORAL ──────────────────────────────────────────────────
 
 // Routes
 import authRoutes from "./routes/auth.routes";
