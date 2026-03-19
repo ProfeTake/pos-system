@@ -23,8 +23,10 @@ let sseListeners: Set<() => void> = new Set();
 let sseConnecting = false;
 let sseReconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 let sseReconnectAttempts = 0;
-const SSE_MAX_RECONNECT_ATTEMPTS = 10; // Más intentos para redes móviles inestables
-const SSE_BASE_RECONNECT_DELAY = 5000; // 5 segundos base
+// Keep attempts low — the server sends retry:15000 so the browser itself
+// will also retry. Excessive JS retries cause the ERR_HTTP2_PROTOCOL_ERROR loop.
+const SSE_MAX_RECONNECT_ATTEMPTS = 5;
+const SSE_BASE_RECONNECT_DELAY = 15000; // Match the server-sent retry: 15000ms
 
 function connectSSE(onEvent: () => void) {
   sseListeners.add(onEvent);
@@ -81,19 +83,22 @@ function connectSSE(onEvent: () => void) {
         sseListeners.size > 0 &&
         sseReconnectAttempts < SSE_MAX_RECONNECT_ATTEMPTS
       ) {
-        const delay =
-          SSE_BASE_RECONNECT_DELAY * Math.pow(2, sseReconnectAttempts);
+        // Exponential backoff: 15s, 30s, 60s, 120s, 120s
+        const delay = Math.min(
+          SSE_BASE_RECONNECT_DELAY * Math.pow(2, sseReconnectAttempts),
+          120000
+        );
         sseReconnectAttempts++;
 
         sseReconnectTimeout = setTimeout(() => {
           sseReconnectTimeout = null;
           if (sseListeners.size > 0) {
-            // Llamar con el primer listener real del set
             const firstListener = sseListeners.values().next().value;
             if (firstListener) connectSSE(firstListener);
           }
-        }, Math.min(delay, 60000)); // Máximo 60 segundos
+        }, delay);
       }
+      // If max attempts reached, stop retrying to avoid hammering the server.
     };
   } catch {
     sseConnecting = false;
