@@ -57,7 +57,9 @@ export default function CashRegisterDialog({
 
   // Shift change detection
   const [shiftChangeData, setShiftChangeData] = useState<any>(null);
-  const [checkingShift, setCheckingShift] = useState(false);
+  // Use refs instead of state to avoid re-triggering the useEffect on every check
+  const checkingShiftRef = useRef(false);
+  const shiftWarningDismissedRef = useRef(false);
 
   // Opening form state
   const [openingLoading, setOpeningLoading] = useState(false);
@@ -330,6 +332,11 @@ export default function CashRegisterDialog({
     prevSessionRef.current = session;
   }, [isOpen, session]);
 
+  // Reset dismissed flag when the session changes (new session opened)
+  useEffect(() => {
+    shiftWarningDismissedRef.current = false;
+  }, [session?.openedAt]);
+
   // ─────────────────────────────────────────────────────
   // Shift change check (periodic)
   // ─────────────────────────────────────────────────────
@@ -337,31 +344,33 @@ export default function CashRegisterDialog({
     if (!session || !isOpen) return;
 
     const checkForShiftChange = async () => {
-      if (checkingShift) return;
-      setCheckingShift(true);
+      // Skip if already checking OR user already dismissed the warning this session
+      if (checkingShiftRef.current || shiftWarningDismissedRef.current) return;
+      checkingShiftRef.current = true;
       try {
         const result = await checkShiftChange();
-        if (result?.isNewShift && !shiftChangeData?.isNewShift) {
+        if (result?.isNewShift) {
           setShiftChangeData(result);
         }
       } catch {}
       finally {
-        setCheckingShift(false);
+        checkingShiftRef.current = false;
       }
     };
 
     checkForShiftChange();
     const interval = setInterval(checkForShiftChange, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [session, isOpen, checkShiftChange, shiftChangeData?.isNewShift, checkingShift]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.openedAt, isOpen]);
 
   // ─────────────────────────────────────────────────────
   // Shift change handlers
   // ─────────────────────────────────────────────────────
   const handleShiftChangeGoToClose = () => {
+    shiftWarningDismissedRef.current = true;
     setShiftChangeData(null);
-    // Esperamos un momento para que Radix UI limpie los Focus traps e aria-hidden 
-    // antes de inyectar el autoFocus del asistente de cierre que causa colisión
+    // Pequeño delay para que Radix UI libere el aria-hidden antes de montar el wizard
     setTimeout(() => {
       handleStartClose();
     }, 250);
@@ -632,7 +641,10 @@ export default function CashRegisterDialog({
       isOpen={!!shiftChangeData?.isNewShift}
       openedAt={session?.openedAt ?? null}
       onGoToClose={handleShiftChangeGoToClose}
-      onCancel={() => setShiftChangeData(null)}
+      onCancel={() => {
+        shiftWarningDismissedRef.current = true;
+        setShiftChangeData(null);
+      }}
     />
     </>
   );
