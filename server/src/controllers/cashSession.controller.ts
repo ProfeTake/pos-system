@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { db } from "../db";
 import { cashSessions, sales, cashMovements } from "../db/schema";
-import { eq, isNull, desc, and, sql, gte, lte } from "drizzle-orm";
+import { eq, isNull, desc, and, sql } from "drizzle-orm";
 import { logAuditAction, AuditActions } from "../middlewares/audit.middleware";
 
 export const getCurrent = async (req: Request, res: Response) => {
@@ -273,74 +273,46 @@ export const getBalance = async (req: Request, res: Response) => {
       return res.json({ open: false, balance: 0 });
     }
 
-    const sessionStart =
-      s.openTime instanceof Date ? s.openTime : new Date(s.openTime);
-    const now = new Date();
+    // ── 1. Ventas en efectivo vinculadas a esta sesión por FK ──────────────
+    // IMPORTANT: Only link via cashSessionId (FK). Never use a date-range
+    // fallback — SQLite stores openTime as unix *seconds*, but new Date(seconds)
+    // lands in 1970, causing the range to match all historical sales.
+    const [efectivoRow] = await db
+      .select({ total: sql<number>`COALESCE(sum(${sales.total}),0)` })
+      .from(sales)
+      .where(
+        and(
+          eq(sales.paymentMethod, "efectivo"),
+          eq(sales.status, "completed"),
+          eq(sales.cashSessionId, s.id)
+        )
+      );
+    const efectivoVentas = Number(efectivoRow?.total ?? 0);
 
-    // Ventas en efectivo vinculadas a esta sesión por FK
-    let efectivoVentas = 0;
-    try {
-      const [efectivoRow] = await db
-        .select({ total: sql<number>`COALESCE(sum(${sales.total}),0)` })
-        .from(sales)
-        .where(
-          and(
-            eq(sales.paymentMethod, "efectivo"),
-            eq(sales.status, "completed"),
-            eq(sales.cashSessionId, s.id)
-          )
-        );
-      efectivoVentas = efectivoRow?.total || 0;
-    } catch {
-      // Fallback: cashSessionId column may not exist yet
-      const [fallbackRow] = await db
-        .select({ total: sql<number>`COALESCE(sum(${sales.total}),0)` })
-        .from(sales)
-        .where(
-          and(
-            eq(sales.paymentMethod, "efectivo"),
-            eq(sales.status, "completed"),
-            gte(sales.createdAt, sessionStart),
-            lte(sales.createdAt, now)
-          )
-        );
-      efectivoVentas = fallbackRow?.total || 0;
-    }
-
-    // Movimientos de caja asociados a la sesión — sumar TODOS los tipos.
-    // INGRESO tiene amount > 0, EGRESO tiene amount < 0 (normalizado al crear).
-    const [movRow] = await db
-      .select({ total: sql<number>`COALESCE(sum(${cashMovements.amount}),0)` })
-      .from(cashMovements)
-      .where(eq(cashMovements.sessionId, s.id));
-
-    const movimientosNeto = movRow?.total || 0;
-
-    // Desglosar ingresos y egresos para el response detallado
+    // ── 2. Movimientos manuales de la sesión (INGRESO positivo, EGRESO negativo) ──
+    // amounts are already signed: INGRESO > 0, EGRESO < 0 (normalised at creation).
     const [ingresosRow] = await db
       .select({ total: sql<number>`COALESCE(sum(${cashMovements.amount}),0)` })
       .from(cashMovements)
       .where(
-        and(
-          eq(cashMovements.sessionId, s.id),
-          eq(cashMovements.type, "INGRESO")
-        )
+        and(eq(cashMovements.sessionId, s.id), eq(cashMovements.type, "INGRESO"))
       );
+
     const [egresosRow] = await db
-      .select({
-        total: sql<number>`COALESCE(sum(ABS(${cashMovements.amount})),0)`,
-      })
+      .select({ total: sql<number>`COALESCE(sum(ABS(${cashMovements.amount})),0)` })
       .from(cashMovements)
       .where(
-        and(
-          eq(cashMovements.sessionId, s.id),
-          eq(cashMovements.type, "EGRESO")
-        )
+        and(eq(cashMovements.sessionId, s.id), eq(cashMovements.type, "EGRESO"))
       );
 
-    const ingresos = ingresosRow?.total || 0;
-    const egresos = egresosRow?.total || 0;
+    const ingresos = Number(ingresosRow?.total ?? 0);
+    const egresos = Number(egresosRow?.total ?? 0);
+    const movimientosNeto = ingresos - egresos;
 
+    // ── 3. Balance final ───────────────────────────────────────────────────
+    // initialCash  = money placed in drawer at opening
+    // efectivoVentas = cash sales during this session
+    // movimientosNeto = manual deposits minus manual withdrawals
     const balanceCalculado = s.initialCash + efectivoVentas + movimientosNeto;
 
     res.json({
