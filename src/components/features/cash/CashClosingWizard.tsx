@@ -75,7 +75,6 @@ export function CashClosingWizard({
             min={0}
             className="text-lg font-mono mt-1"
             placeholder="0"
-            autoFocus
             autoComplete="off"
             aria-label="Monto declarado en pesos"
             value={declaredInput}

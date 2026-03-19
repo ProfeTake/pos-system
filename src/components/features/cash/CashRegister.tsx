@@ -358,9 +358,13 @@ export default function CashRegisterDialog({
   // ─────────────────────────────────────────────────────
   // Shift change handlers
   // ─────────────────────────────────────────────────────
-  const handleShiftChangeGoToClose = async () => {
+  const handleShiftChangeGoToClose = () => {
     setShiftChangeData(null);
-    await handleStartClose();
+    // Esperamos un momento para que Radix UI limpie los Focus traps e aria-hidden 
+    // antes de inyectar el autoFocus del asistente de cierre que causa colisión
+    setTimeout(() => {
+      handleStartClose();
+    }, 250);
   };
 
   const handleClosePreviousShift = async () => {
