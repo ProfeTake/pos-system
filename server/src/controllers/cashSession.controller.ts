@@ -140,47 +140,30 @@ export const closeCurrentSession = async (req: Request, res: Response) => {
     const sessionId = openSession.id;
 
     // Calcular balance real del sistema (server-side)
-    const sessionStart =
-      openSession.openTime instanceof Date
-        ? openSession.openTime
-        : new Date(openSession.openTime);
-    const now = new Date();
-
     // Ventas en efectivo vinculadas a esta sesión por FK
-    let efectivoVentas = 0;
-    try {
-      const [efectivoRow] = await db
-        .select({ total: sql<number>`COALESCE(sum(${sales.total}),0)` })
-        .from(sales)
-        .where(
-          and(
-            eq(sales.paymentMethod, "efectivo"),
-            eq(sales.status, "completed"),
-            eq(sales.cashSessionId, sessionId)
-          )
-        );
-      efectivoVentas = efectivoRow?.total || 0;
-    } catch {
-      // Fallback: column may not exist yet — use date range only
-      const [fallbackRow] = await db
-        .select({ total: sql<number>`COALESCE(sum(${sales.total}),0)` })
-        .from(sales)
-        .where(
-          and(
-            eq(sales.paymentMethod, "efectivo"),
-            eq(sales.status, "completed"),
-            gte(sales.createdAt, sessionStart),
-            lte(sales.createdAt, now)
-          )
-        );
-      efectivoVentas = fallbackRow?.total || 0;
-    }
-    const [movRow] = await db
+    const [efectivoRow] = await db
+      .select({ total: sql<number>`COALESCE(sum(${sales.total}),0)` })
+      .from(sales)
+      .where(
+        and(
+          eq(sales.paymentMethod, "efectivo"),
+          eq(sales.status, "completed"),
+          eq(sales.cashSessionId, sessionId)
+        )
+      );
+    const efectivoVentas = Number(efectivoRow?.total ?? 0);
+
+    const [ingresosRow] = await db
       .select({ total: sql<number>`COALESCE(sum(${cashMovements.amount}),0)` })
       .from(cashMovements)
-      .where(eq(cashMovements.sessionId, sessionId));
+      .where(and(eq(cashMovements.sessionId, sessionId), eq(cashMovements.type, "INGRESO")));
 
-    const movimientosNeto = movRow?.total || 0;
+    const [egresosRow] = await db
+      .select({ total: sql<number>`COALESCE(sum(ABS(${cashMovements.amount})),0)` })
+      .from(cashMovements)
+      .where(and(eq(cashMovements.sessionId, sessionId), eq(cashMovements.type, "EGRESO")));
+
+    const movimientosNeto = Number(ingresosRow?.total ?? 0) - Number(egresosRow?.total ?? 0);
     const systemBalance =
       openSession.initialCash + efectivoVentas + movimientosNeto;
 
